@@ -326,7 +326,7 @@ class ArrayIdentifier:public Identifier
     std::vector<Expression*> shape;
     ArrayIdentifier(Identifier& name);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
-};
+}; 
 
 /*
 AST 数组赋值节点
