@@ -90,6 +90,7 @@ FunctionCallArgList
 void FunctionCallArgList::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
+    out<<"FunctionCallArgList"<<std::endl;
     for(auto i=args.begin();i!=args.end();i++)
     {
         (*i)->print(lock+1,i+1==args.end(),out);
