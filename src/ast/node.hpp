@@ -5,7 +5,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
-#include <fstream>
+#include <cstdint>
 
 namespace sysy{
 //INTGER是32位整型数字别名
@@ -78,7 +78,7 @@ class BinaryExpr:public Expression{
     int op;
     Expression& lh;
     Expression& rh;
-    BinaryExpr(Expression& lh,Expression& rh,int op);
+    BinaryExpr(int op,Expression& lh,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
 };
 
@@ -104,6 +104,7 @@ class Number:public Expression{
     public:
     INTGER value;
     Number(const std::string& value);
+    Number(INTGER value);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
 };
 
@@ -226,7 +227,7 @@ class ReturnStmt:public Stmt
 {
     public:
     Expression* expr;
-    ReturnStmt(Expression* expr);
+    ReturnStmt(Expression* expr=NULL);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
 };
 
@@ -358,7 +359,7 @@ class ArrayDecl:public Decl
 };
 
 /*
-AST函数的单个参数定义
+AST函数定义时单个参数定义
 type:类型
 name:标识符
 */
@@ -371,7 +372,7 @@ class FuncArg:public Expression{
 };
 
 /*
-AST函数参数列表类定义
+AST函数定义时参数列表定义
 list:函数参数列表
 */
 class FuncArgList:public Expression{

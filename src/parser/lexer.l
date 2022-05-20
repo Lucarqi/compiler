@@ -77,7 +77,6 @@ int yycolumn = 1;
 "&&"                    return TOKEN(AND);
 "||"                    return TOKEN(OR);
 
-"."                     return TOKEN(DOT);
 ";"                     return TOKEN(SEMI);
 ","                     return TOKEN(COMMA);
 

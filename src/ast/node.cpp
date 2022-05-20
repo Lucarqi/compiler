@@ -49,7 +49,7 @@ void ConditionExpr::print(int lock,bool end,std::ostream& out)
 /*
 BinaryExpr
 */
-BinaryExpr::BinaryExpr(Expression& lh,Expression& rh,int op)
+BinaryExpr::BinaryExpr(int op,Expression& lh,Expression& rh)
     :lh(lh),rh(rh),op(op){}
 void BinaryExpr::print(int lock,bool end,std::ostream& out)
 {
@@ -69,6 +69,18 @@ void UnaryExpr::print(int lock,bool end,std::ostream& out)
     this->print_format(lock,end,out);
     out<<"UnaryExpr Op:"<<op<<std::endl;
     rh.print(lock+1,true,out);
+}
+
+/*
+Number
+*/
+Number::Number(const std::string& value)
+    :value(std::stoi(value,0,0)){}
+Number::Number(INTGER value):value(value){}
+void Number::print(int lock,bool end,std::ostream& out)
+{
+    this->print_format(lock,end,out);
+    out<<"Number:"<<value<<std::endl;
 }
 
 /*
