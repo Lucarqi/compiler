@@ -1,12 +1,12 @@
 %{
+#include "ast/node.hpp"
+#include "ast/generate/generate.hpp"
 #include <iostream>
 #include <cstdlib>
 #include "parser.hpp"
 #include "config.hpp"
-#include "ast/node.hpp"
-#include "ast/generate/generate.hpp"
 
-//AST抽象语法树root
+//AST抽象语法树root，在generate.hpp中定义
 using sysy::ast::root;
 
 extern int yylex();
@@ -16,7 +16,7 @@ extern int yylex_destroy();
 void yyerror(const char* s)
 {
     std::cerr << sysy::config::filename << "line is:" <<yylloc.first_line << \
-    "column is :" << yylloc.firstcolumn << "error :" << s << std::endl;
+    "column is :" << yylloc.first_column << "error :" << s << std::endl;
     yylex_destroy();
     std::exit(1);
 }
@@ -36,7 +36,17 @@ void yyerror(const char* s)
         }                                                             \
         yylloc = Current;                                             \
     } while (0)
-
+//?
+#define yytnamerr(_yyres, _yystr)                                         \
+        ([](char* yyres, const char* yystr) {                             \
+            if (*yystr == '"') {                                          \
+                if (yyres) return yystpcpy(yyres, yystr + 1) - yyres - 1; \
+                else return yystrlen(yystr) - 2;                          \
+            } else {                                                      \
+                if (yyres) return yystpcpy(yyres, yystr) - yyres;         \
+                else return yystrlen(yystr);                              \
+            }                                                             \
+        })(_yyres, _yystr)
 %}
 
 %locations
@@ -102,8 +112,8 @@ void yyerror(const char* s)
 //开始分析
 CompUnit    : CompUnit Decl {$$->body.push_back($<decl>2);}
             | CompUnit FuncDef {$$->body.push_back($<funcdef>2);}
-            | Decl {root=new sysy::ast::node::Root();$$->body.push_back($<decl>1);}
-            | FuncDef {root=new sysy::ast::node::Root();$$->boy.push_back($<funcdef>1);}
+            | Decl {root=new sysy::ast::node::Root();$$=root;$$->body.push_back($<decl>1);}
+            | FuncDef {root=new sysy::ast::node::Root();$$=root;$$->body.push_back($<funcdef>1);}
             ;
 //变量和常量语句
 Decl        : ConstStmt
@@ -113,8 +123,8 @@ Decl        : ConstStmt
 ConstStmt   : ConstDecl SEMI {$$=$1;}
             ;
 // const int ... , ...
-ConstDecl   : CONST BType ConstDef {$$=new sysy::ast::node::DeclareStmt($2);$$->list.push_back($3)}
-            | ConstDecl COMMA ConstDef {$$->list.push_back($3)}
+ConstDecl   : CONST BType ConstDef {$$=new sysy::ast::node::DeclareStmt($2);$$->list.push_back($3);}
+            | ConstDecl COMMA ConstDef {$$->list.push_back($3);}
             ;
 // int
 BType       : INT
@@ -123,7 +133,7 @@ BType       : INT
 VarStmt     : VarDecl SEMI {$$=$1;}
             ;
 // int ... , ...
-VarDecl     : BType VarDef {$$=new sysy::ast::node::DeclareStmt($1);$$->lis.push_back($2);}
+VarDecl     : BType VarDef {$$=new sysy::ast::node::DeclareStmt($1);$$->list.push_back($2);}
             | VarDecl COMMA VarDef {$$->list.push_back($3);}
             ;
 // 单一变量和数组
@@ -152,7 +162,7 @@ ArrayInit   : LBRACE ArrayInner RBRACE {$$=$2;}
             ;
 // {{},exp,..,}
 ArrayInner  : ArrayInner COMMA AddExp {$$=$1; $$->list.push_back(new sysy::ast::node::ArrayDeclWithInitVal(true,$3)); }
-            | ArrayInner COMMA ArrayInit {$$=$1; $$->list.push_back()}
+            | ArrayInner COMMA ArrayInit {$$=$1; $$->list.push_back($3);}
             | ArrayInit {$$=new sysy::ast::node::ArrayDeclWithInitVal(false,nullptr);$$->list.push_back($1);}
             | AddExp {$$=new sysy::ast::node::ArrayDeclWithInitVal(false,nullptr);$$->list.push_back(new sysy::ast::node::ArrayDeclWithInitVal(true,$1));}
             ;
@@ -194,13 +204,13 @@ MulExp  : MulExp MulOp UnaryExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);
         | UnaryExp
         ;
 
-UnaryExp: UnaryOp UnaryExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
+UnaryExp: UnaryOp UnaryExp {$$=new sysy::ast::node::UnaryExpr($1,*$2);}
         | FuncCall
         | PrimaryExp
         ;
 
 FuncCall: Ident LPARENT FuncRParams RPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*$3);}
-        | Ident LPARENT LPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*(new sysy::ast::node::FunctionCall()));}
+        | Ident LPARENT LPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*(new sysy::ast::node::FunctionCallArgList()));}
         ;
 
 PrimaryExp  : Lval
@@ -248,7 +258,7 @@ FuncFParamArray : FuncFParamOne LBRACKET RBRACKET
                 | FuncFParamArray LBRACKET Exp RBRACKET
                 {
                         $$=$1;
-                        (sysy::ast::node::ArrayIdentifier*)&($$->name)->shape.push_back($3);
+                        ((sysy::ast::node::ArrayIdentifier*)&($$->name))->shape.push_back($3);
                 }
                 ;
 
@@ -285,12 +295,12 @@ AssignStmtNoSEMI: Lval ASSIGN AddExp {$$=new sysy::ast::node::AssignStmt(*$1,*$3
                 | PLUSPLUS Lval 
                 {
                         $$=new sysy::ast::node::AssignStmt(*$2,
-                        *(new sysy::ast::node::BinaryExpr(PLUS,*$2,new sysy::ast::node::Number(1))));
+                        *(new sysy::ast::node::BinaryExpr(PLUS,*$2,*new sysy::ast::node::Number(1))));
                 }
                 | MINUSMINUS Lval
                 {
                         $$=new sysy::ast::node::AssignStmt(*$2,
-                        *(new sysy::ast::node::BinaryExpr(MINUS,*$2,new sysy::ast::node::Number(1))));
+                        *(new sysy::ast::node::BinaryExpr(MINUS,*$2,*new sysy::ast::node::Number(1))));
                 }
                 | Lval PLUSPLUS {$$=new sysy::ast::node::AfterInc(*$1,PLUSPLUS);}
                 | Lval MINUSMINUS {$$=new sysy::ast::node::AfterInc(*$1,MINUSMINUS);}

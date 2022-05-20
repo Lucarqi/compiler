@@ -12,9 +12,9 @@ int yycolumn = 1;
                         yylloc.first_column = yycolumn;         \
                         for( auto i:std::string(yytext_ptr)){   \
                             if(i == '\n')                       \
-                            {
-                                yylineno++;
-                                yycolumn = 1;
+                            {                                   \
+                                yylineno++;                     \
+                                yycolumn = 1;                   \
                             }else {                             \
                                 yycolumn ++;                    \
                             }                                   \
@@ -29,17 +29,17 @@ int yycolumn = 1;
 \/\/.*\n?               ;
 "/*"                    {
                             int c;
-                            while((c == yyinput())! = NULL)
+                            while((c = yyinput()) != 0)
                             {
-                                if(c == "\n")
+                                if(c == '\n')
                                 {
                                     yylineno++;
                                     yycolumn = 1;
                                 }
-                                else if(c == "*")
+                                else if(c == '*')
                                 {
-                                    if((c == yyinput()) == "/") break;
-                                    else continue;
+                                    if((c = yyinput()) == '/') break;
+                                    else unput(c);
                                 }
                             }
                         }   

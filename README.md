@@ -8,3 +8,4 @@
 ## 1.编译器框架
 词法分析/语法分析-->抽象语法树-->中间代码IR-->risc-v汇编程序生成
 ## 2.词法分析器和语法分析
+CmakeList.txt参考Cmake官方文档FindFLEX和FindBISON节部分

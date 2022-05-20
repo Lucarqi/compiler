@@ -1,13 +1,14 @@
 /*
 AST node的实现
 */
-#include "node.hpp"
+#include "ast/node.hpp"
+#include "parser.hpp"
 
 namespace sysy::ast::node{
 /*
 BaseNode实现
 */
-BaseNode::BaseNode() {}
+BaseNode::BaseNode():line(yylloc.first_line),column{yylloc.first_column} {}
 BaseNode::~BaseNode() {}
 void BaseNode::print(int lock,bool end, std::ostream& out)
 {
@@ -17,7 +18,7 @@ void BaseNode::print_format(int lock,bool end, std::ostream& out)
 {
     for(int i=0; i<lock; i++)
     {
-        out<< "|   ";
+        out<< "│   ";
     }
     if(end) out<<"└──";
     else out<<"├──";
@@ -50,7 +51,7 @@ void ConditionExpr::print(int lock,bool end,std::ostream& out)
 BinaryExpr
 */
 BinaryExpr::BinaryExpr(int op,Expression& lh,Expression& rh)
-    :lh(lh),rh(rh),op(op){}
+    :op(op),lh(lh),rh(rh){}
 void BinaryExpr::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
@@ -62,8 +63,8 @@ void BinaryExpr::print(int lock,bool end,std::ostream& out)
 /*
 UnaryExpr
 */
-UnaryExpr::UnaryExpr(Expression& rh,int op)
-    :rh(rh),op(op){}
+UnaryExpr::UnaryExpr(int op,Expression& rh)
+    :op(op),rh(rh){}
 void UnaryExpr::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
@@ -98,7 +99,7 @@ void FunctionCallArgList::print(int lock,bool end,std::ostream& out)
 /*
 FunctionCall
 */
-FunctionCall::FunctionCall(Identifier& name,FunctionCallArgList& list)
+FunctionCall::FunctionCall(Identifier& name,FunctionCallArgList& args)
     :name(name),args(args){}
 void FunctionCall::print(int lock,bool end,std::ostream& out)
 {
@@ -106,6 +107,19 @@ void FunctionCall::print(int lock,bool end,std::ostream& out)
     out<<"FunctionCall"<<std::endl;
     name.print(lock+1,false,out);
     args.print(lock+1,false,out);
+}
+
+/*
+Block
+*/
+void Block::print(int lock,bool end,std::ostream& out)
+{
+    this->print_format(lock,end,out);
+    out<<"Block"<<std::endl;
+    for(auto i=Stmts.begin();i!=Stmts.end();i++)
+    {
+        (*i)->print(lock+1,i+1==Stmts.end(),out);
+    }
 }
 
 /*
@@ -237,7 +251,7 @@ DeclareStmt::DeclareStmt(int type)
 void DeclareStmt::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
-    out<<"Declare Type"<<type<<std::endl;
+    out<<"Declare Type:"<<type<<std::endl;
     for(auto i=list.begin();i!=list.end();i++)
     {
         (*i)->print(lock+1,i+1==list.end(),out);
@@ -291,7 +305,7 @@ ArrayIdentifier
 // 实例化Identifier？
 */
 ArrayIdentifier::ArrayIdentifier(Identifier& name)
-    :name(name),Identifier(name){}
+    :Identifier(name),name(name){}
 void ArrayIdentifier::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
@@ -359,25 +373,25 @@ FunctionDefine
 FuncDefine::FuncDefine(int return_type,Identifier& name,
         FuncArgList& args,Block& body)
         : return_type(return_type),name(name),args(args),body(body) {}
-void FuncDefine::print(int lock=0,bool end=false, std::ostream& out= std::cerr)
+void FuncDefine::print(int lock,bool end, std::ostream& out)
 {
     this->print_format(lock,end,out);
     out<<"FunctionDefine:"<<std::endl;
     
     this->print_format(lock+1,false,out);
-    out<<"Return-type:"<<return_type<<std::endl;
+    out<<"Return Type:"<<return_type<<std::endl;
 
     this->print_format(lock+1,false,out);
     out<<"Name"<<std::endl;
-    name.print(lock+2,false,out);
+    name.print(lock+2,true,out);
 
     this->print_format(lock+1,false,out);
     out<<"Args"<<std::endl;
-    args.print(lock+2,false,out);
+    args.print(lock+2,true,out);
 
-    this->print_format(lock+1,false,out);
+    this->print_format(lock+1,true,out);
     out<<"Body"<<std::endl;
-    body.print(lock+2,false,out);
+    body.print(lock+2,true,out);
 }
 
 /*
@@ -387,6 +401,7 @@ void Root::print(int lock,bool end, std::ostream& out)
 {
     this->print_format(lock,end,out);
     out<<"Root"<<std::endl;
+    //out<<this->body.size()<<std::endl;
     for(auto i=body.begin(); i!=body.end();i++)
     {
         (*i)->print(lock+1,i+1 == body.end(),out);

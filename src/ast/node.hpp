@@ -16,6 +16,7 @@ AST基本类定义
 */
 class BaseNode {
     public:
+    int line,column;
     BaseNode();
     //虚构析函数
     virtual ~BaseNode();
@@ -91,7 +92,7 @@ class UnaryExpr:public Expression{
     public:
     int op;
     Expression& rh;
-    UnaryExpr(Expression& rh,int op);
+    UnaryExpr(int op,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
 };
 
@@ -405,7 +406,7 @@ body:所有函数和全局变量
 class Root:public BaseNode{
     public:
     std::vector<BaseNode*> body;
-    virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual void print(int lock=0,bool end=true, std::ostream& out= std::cerr);
 };
-}
-}
+}//sysy::ast::node
+}//sysy
