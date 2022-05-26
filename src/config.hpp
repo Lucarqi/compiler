@@ -9,6 +9,7 @@
 namespace sysy::config{
 //输出ast标志
 extern bool print_ast;
+extern bool print_ir;
 //输入文件流
 extern FILE* inputfile;
 //输出流

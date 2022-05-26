@@ -6,6 +6,7 @@ namespace sysy::config{
 FILE* inputfile = stdin;
 std::ostream* output = &std::cout;
 bool print_ast = false;
+bool print_ir = false;
 std::string filename = "<stdin>";
 
 void parser_arg(int arg, char** argv)
@@ -17,6 +18,7 @@ void parser_arg(int arg, char** argv)
         {
             if(argv[i] == std::string("-o")) s=1;//-o outfilename
             else if(argv[i] == std::string("-print_ast")) print_ast=true;
+            else if(argv[i] == std::string("-print_ir")) print_ir=true;
         }
         else 
         {

@@ -3,8 +3,13 @@ AST node的实现
 */
 #include "ast/node.hpp"
 #include "parser.hpp"
+#include "config.hpp"
 
 namespace sysy::ast::node{
+namespace{
+//当前的IR生成对应AST对象
+std::stack<BaseNode*> nodes;
+}
 /*
 BaseNode实现
 */
@@ -22,6 +27,32 @@ void BaseNode::print_format(int lock,bool end, std::ostream& out)
     }
     if(end) out<<"└──";
     else out<<"├──";
+}
+void BaseNode::generate_ir(ir::Context& ctx,ir::IRList& ir)
+{
+    try
+    {
+        nodes.push(this);
+        this->irGEN(ctx,ir);
+        nodes.pop();
+    }
+    catch(const error::BaseError& e)
+    {
+        std::cerr <<sysy::config::filename<<":"<<this->line
+            <<":"<<this->column<< e.what() << '\n'; 
+        abort();
+    }
+}
+
+/*
+Expression
+*/
+int Expression::eval(ir::Context& ctx)
+{
+    nodes.push(this);
+    auto ret = this->_eval(ctx);
+    nodes.pop();
+    return ret;
 }
 
 /*

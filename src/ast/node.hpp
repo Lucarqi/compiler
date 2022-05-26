@@ -6,10 +6,17 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <stack>
+#include "IR/ir.hpp"
+#include "error/error.hpp"
 
 namespace sysy{
 //INTGER是32位整型数字别名
 using INTGER=std::int32_t;
+namespace ir{
+//作用域定义
+class Context;
+}
 namespace ast::node{
 /*
 AST基本类定义
@@ -26,6 +33,11 @@ class BaseNode {
     virtual void print(int lock=0, bool end=false, std::ostream& out = std::cerr);
     //输出格式
     void print_format(int lock=0,bool end=false, std::ostream& out=std::cerr);
+    //生成IR接口
+    void generate_ir(ir::Context& ctx,ir::IRList& ir);
+    protected:
+    //虚函数，子类实现
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -33,7 +45,11 @@ AST表达式接口
 */
 class Expression:public BaseNode{
     public:
-    int val=0;
+    //获取当前expr的值
+    int eval(ir::Context& ctx);
+    protected:
+    //虚函数，子类实现
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -55,6 +71,7 @@ class Identifier:public Expression{
     std::string name;
     Identifier(const std::string& name);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -66,6 +83,7 @@ class ConditionExpr: public Expression{
     Expression& value;
     ConditionExpr(Expression& value);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -81,6 +99,7 @@ class BinaryExpr:public Expression{
     Expression& rh;
     BinaryExpr(int op,Expression& lh,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -94,6 +113,7 @@ class UnaryExpr:public Expression{
     Expression& rh;
     UnaryExpr(int op,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -107,6 +127,7 @@ class Number:public Expression{
     Number(const std::string& value);
     Number(INTGER value);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -139,6 +160,7 @@ class Block:public Stmt{
     public:
     std::vector<Stmt*> Stmts;
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -153,6 +175,8 @@ class AssignStmt:public Stmt
     Expression& rexpr;
     AssignStmt(Identifier& lname,Expression& rexpr);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -167,6 +191,8 @@ class AfterInc:public Stmt
     int op;
     AfterInc(Identifier&lname,int op);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual int _eval(ir::Context& ctx);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -184,6 +210,7 @@ class IfStmt:public Stmt
     Stmt& elsestmt;
     IfStmt(ConditionExpr& cond,Stmt& thenstmt,Stmt& elsestmt);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -198,6 +225,7 @@ class WhileStmt:public Stmt
     Stmt& stmt;
     WhileStmt(ConditionExpr& cond,Stmt& stmt);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -208,6 +236,7 @@ class BreakStmt:public Stmt
 {
     public:
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -217,6 +246,7 @@ class ContinueStmt:public Stmt
 {
     public:
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -230,6 +260,7 @@ class ReturnStmt:public Stmt
     Expression* expr;
     ReturnStmt(Expression* expr=NULL);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -243,6 +274,8 @@ class ValueExpr:public Stmt
     Expression& value;
     ValueExpr(Expression& expr);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
+    virtual int _eval(ir::Context& ctx);
 };
 
 /*
@@ -252,6 +285,7 @@ class VoidStmt:public Stmt
 {
     public:
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -267,6 +301,7 @@ class DeclareStmt:public Decl
     std::vector<Decl*> list;
     DeclareStmt(int type);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);  
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -283,6 +318,7 @@ class VarDeclWithInitVal:public Decl
     bool is_const;
     VarDeclWithInitVal(Identifier& name,Expression& value,bool is_const=false);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -296,6 +332,7 @@ class VarDecl:public Decl
     Identifier& name;
     VarDecl(Identifier& name);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -328,6 +365,7 @@ class ArrayIdentifier:public Identifier
     std::vector<Expression*> shape;
     ArrayIdentifier(Identifier& name);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual int _eval(ir::Context& ctx);
 }; 
 
 /*
@@ -345,6 +383,7 @@ class ArrayDeclWithInit:public Decl
     bool is_const;
     ArrayDeclWithInit(ArrayIdentifier& name,ArrayDeclWithInitVal& value,bool is_const=false);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -357,6 +396,7 @@ class ArrayDecl:public Decl
     ArrayIdentifier& name;
     ArrayDecl(ArrayIdentifier& name);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -397,6 +437,8 @@ class FuncDefine:public BaseNode{
     Block& body;
     FuncDefine(int return_type,Identifier& name,FuncArgList& list,Block& body);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
+
 };
 
 /*
@@ -407,6 +449,8 @@ class Root:public BaseNode{
     public:
     std::vector<BaseNode*> body;
     virtual void print(int lock=0,bool end=true, std::ostream& out= std::cerr);
+    virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
+    
 };
 }//sysy::ast::node
 }//sysy
