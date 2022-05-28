@@ -1,6 +1,5 @@
-#include "config.hpp"
 #include "ast/generate/generate.hpp"
-#include "IR/ir.hpp"
+#include "config.hpp"
 #include "IR/generate/generate.hpp"
 
 int main(int arg,char** argv)

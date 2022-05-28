@@ -1,8 +1,8 @@
 #pragma once
 #include <iostream>
 #include <list>
-#include <IR/generate/context.hpp>
 
+#include "IR/generate/context.hpp"
 namespace sysy::ir{
 //IRop,中间语言操作对象
 class irOP
@@ -53,7 +53,7 @@ class IR{
     //操作码
     irCODE ircode;
     //操作数
-    irOP op1,op2,op3,dest;
+    irOP dest,op1,op2,op3;
     //IR格式
     IR(irCODE ircode,irOP dest,irOP op1,irOP op2,irOP op3);
     IR(irCODE ircode,irOP dest,irOP op1,irOP op2);

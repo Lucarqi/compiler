@@ -1,4 +1,5 @@
 #include "IR/generate/context.hpp"
+#include "error/error.hpp"
 #include <exception>
 
 namespace sysy::ir{
@@ -38,7 +39,7 @@ VarInfo& Context::find_symbol(std::string name,bool top)
         }
     }
     //没找到
-    throw std::out_of_range("No such const:"+name);
+    throw error::UndefineVar();
 }
 //根据标识符，查找ConstInfo
 ConstInfo& Context::find_const(std::string name,bool top)
@@ -57,7 +58,7 @@ ConstInfo& Context::find_const(std::string name,bool top)
         }
     }
     //没找到
-    throw std::out_of_range("No such const:"+name);
+    throw error::UndefineVar();
 }
 //创建当前作用域
 void Context::create_scope(){

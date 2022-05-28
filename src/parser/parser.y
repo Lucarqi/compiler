@@ -289,7 +289,7 @@ AssignStmt      : AssignStmtNoSEMI SEMI {$$=$1;}
                 ;
 
 /*这里++a翻译为 a=a+1
-a++翻译为AfterInc
+a++翻译为AfterInc,即b=a,a=a+1
 */
 AssignStmtNoSEMI: Lval ASSIGN AddExp {$$=new sysy::ast::node::AssignStmt(*$1,*$3);}
                 | PLUSPLUS Lval 

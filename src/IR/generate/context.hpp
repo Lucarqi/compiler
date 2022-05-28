@@ -1,20 +1,22 @@
 #pragma once
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "IR/ir.hpp"
 //作用域定义
 namespace sysy::ir{
 //变量信息
 class VarInfo{
 public:
-    //数组大小
-    std::vector<int> shape;
-    //是不是数组
-    bool is_array;
     //寄存器名称
     std::string name;
+    //是不是数组
+    bool is_array;
+    //数组大小
+    std::vector<int> shape;
     VarInfo(std::string name, bool is_array=false, std::vector<int> shape={});
 };
 //常量信息

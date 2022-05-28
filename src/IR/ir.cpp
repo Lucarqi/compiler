@@ -2,9 +2,9 @@
 #include <assert.h>
 namespace sysy::ir{
 //irOP是个变量
-irOP::irOP(std::string name):name(name),type(Type::var){}
+irOP::irOP(std::string name):type(Type::var),name(name){}
 //irOP是个立即数
-irOP::irOP(int value):value(value),type(Type::imm){}
+irOP::irOP(int value):type(Type::imm),value(value){}
 //irOP为空
 irOP::irOP():type(Type::null){}
 //irOP是变量吗
@@ -62,6 +62,7 @@ void IR::print(std::ostream& out)
         case irCODE::MUL:print_format("MUL",out);break;
         case irCODE::DIV:print_format("DIV",out);break;
         case irCODE::MOD:print_format("MOD",out);break;
+        case irCODE::MOV:print_format("MOV",out);break;
     }
     print_irOP(dest,out);
     print_irOP(op1,out);

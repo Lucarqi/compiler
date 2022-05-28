@@ -1,4 +1,5 @@
 #pragma once
+
 #include "ast/node.hpp"
 #include "IR/ir.hpp"
 

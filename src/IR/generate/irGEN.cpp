@@ -14,11 +14,13 @@ IR中间语言生成
 
 using namespace sysy::ir;
 namespace sysy::ast::node{
+
 //BaseNode
 void BaseNode::irGEN(ir::Context& ctx,IRList& ir)
 {
     //do something
 }
+
 //rootNode：遍历所有节点生成IR
 void Root::irGEN(ir::Context& ctx,IRList& ir)
 {
@@ -27,13 +29,14 @@ void Root::irGEN(ir::Context& ctx,IRList& ir)
         i->generate_ir(ctx,ir);
     }
 }
+
 //变量带初始值
 void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
 {
     try{
         //检查当前作用域定义过吗
         auto& find = ctx.find_symbol(this->name.name,true);
-    }catch(...)
+    }catch(error::BaseError& e)
     {
         //没定义过，判断是否是全局作用域
         if(ctx.is_global())
@@ -54,7 +57,7 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
         {
             //是个局部变量
             std::string local_re = "%"+std::to_string(ctx.get_id());
-            ctx.insert_symbol(this->name.name,VarInfo(local_re);
+            ctx.insert_symbol(this->name.name,VarInfo(local_re));
             //MOV赋值
             ir.emplace_back(irCODE::MOV,irOP(local_re),irOP(this->value.eval(ctx)));
         }
@@ -62,6 +65,7 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
     //定义过，抛出重复定义异常
     throw error::RedefineVar{};
 }
+
 //变量的声明
 void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
 {
@@ -69,7 +73,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
     {
         auto& find = ctx.find_symbol(this->name.name,true);
     }
-    catch(...)
+    catch(error::BaseError& e)
     {
         if(ctx.is_global())
         {   //全局变量初始化为0
@@ -85,6 +89,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
     }
     throw error::RedefineVar{};
 }
+
 /*
 函数的定义
 需要创建作用域
@@ -103,11 +108,11 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
         ctx.insert_symbol(args.list[i]->name.name,VarInfo(arg_re)); 
     }
     //处理block
-    this->body.generate_ir(ir::Context& ctx,ir::IRList& ir);
+    this->body.generate_ir(ctx,ir);
     //处理return
     if(this->return_type == INT)
     {
-        ir.emplace_back(irCODE::RET,irOP(),0)
+        ir.emplace_back(irCODE::RET,irOP(),0);
     }
     else 
     {
@@ -117,6 +122,7 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     //退出作用域
     ctx.end_scope();
 }
+
 //block
 void Block::irGEN(ir::Context& ctx,IRList& ir)
 {
@@ -128,8 +134,74 @@ void Block::irGEN(ir::Context& ctx,IRList& ir)
     }
     ctx.end_scope();
 }
-/*
-赋值语句
-*/
 
+//ReturnStmt
+void ReturnStmt::irGEN(ir::Context& ctx,IRList& ir)
+{
+    if(this->expr!=NULL)
+        ir.emplace_back(ir::irCODE::RET,irOP(),this->expr->eval_run(ctx,ir));
+    else 
+        ir.emplace_back(ir::irCODE::RET);
+}
+
+//DeclareStmt：多个赋值语句
+void DeclareStmt::irGEN(ir::Context& ctx,IRList& ir)
+{
+    for(auto i:this->list)
+        i->generate_ir(ctx,ir);
+}
+
+//voidStmt：空语句
+void VoidStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
+{
+    //空过
+}
+
+
+/*
+赋值语句，需要判断lname定义
+*/
+void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
+{
+    //UndefindError 交给generate_ir处理
+    auto& lh = ctx.find_symbol(this->lname.name);
+    auto rh = this->rexpr.eval_run(ctx,ir);
+    //
+    if(rh.is_var() && (rh.name[0] == '%') && 
+        (lh.name[0]=='%'||lh.name.substr(0,4)=="$arg"))
+    {
+        //直接改变寄存器，优化
+        lh.name = rh.name;
+    }
+    else if(lh.name[0] == '@')
+    {
+        ir.emplace_back(ir::irCODE::MOV,lh.name,rh);
+    }
+    else 
+    {
+        lh.name = "%"+std::to_string(ctx.get_id());
+        ir.emplace_back(ir::irCODE::MOV,lh.name,rh);
+    }
+}
+
+//AfterInc语句状态下的生成IR
+void AfterInc::irGEN(ir::Context& ctx,ir::IRList& ir)
+{
+    auto num = new ast::node::Number(1);
+    auto binaryExp = new ast::node::BinaryExpr(this->op,lname,*num);
+    auto assign = new ast::node::AssignStmt(lname,*binaryExp);
+    assign->line = this->line;
+    assign->column = this->column;
+    assign->eval_run(ctx,ir);
+    delete num;
+    delete binaryExp;
+    delete assign;
+}
+void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void ArrayDeclWithInit::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void ValueExpr::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void ContinueStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void WhileStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
+void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
 }

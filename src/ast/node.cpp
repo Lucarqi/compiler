@@ -3,7 +3,6 @@ AST node的实现
 */
 #include "ast/node.hpp"
 #include "parser.hpp"
-#include "config.hpp"
 
 namespace sysy::ast::node{
 namespace{
@@ -36,8 +35,9 @@ void BaseNode::generate_ir(ir::Context& ctx,ir::IRList& ir)
         this->irGEN(ctx,ir);
         nodes.pop();
     }
-    catch(const error::BaseError& e)
+    catch(error::BaseError& e)
     {
+        nodes.pop();
         std::cerr <<sysy::config::filename<<":"<<this->line
             <<":"<<this->column<< e.what() << '\n'; 
         abort();
@@ -49,10 +49,34 @@ Expression
 */
 int Expression::eval(ir::Context& ctx)
 {
-    nodes.push(this);
-    auto ret = this->_eval(ctx);
-    nodes.pop();
-    return ret;
+    try
+    {
+        nodes.push(this);
+        auto ret = this->_eval(ctx);
+        nodes.pop();
+        return ret;
+    }
+    catch(const std::exception& e)
+    {
+        nodes.pop();
+        std::cerr << e.what() << '\n';
+        abort();
+    }
+}
+ir::irOP Expression::eval_run(ir::Context& ctx,ir::IRList& ir)
+{
+    try{
+        nodes.push(this);
+        auto ret = this->_eval_run(ctx,ir);
+        nodes.pop();
+        return ret;
+    }catch(error::BaseError& e)
+    {
+        nodes.pop();
+        std::cerr <<sysy::config::filename<<":"<<this->line
+            <<":"<<this->column<< e.what() << '\n'; 
+        abort();
+    }
 }
 
 /*

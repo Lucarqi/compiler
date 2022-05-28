@@ -7,6 +7,9 @@
 #include <vector>
 #include <cstdint>
 #include <stack>
+#include <exception>
+
+#include "config.hpp"
 #include "IR/ir.hpp"
 #include "error/error.hpp"
 
@@ -45,17 +48,24 @@ AST表达式接口
 */
 class Expression:public BaseNode{
     public:
-    //获取当前expr的值
+    //获取当前expr的值，接口
     int eval(ir::Context& ctx);
+    //获得该对象表示的寄存器信息，接口
+    ir::irOP eval_run(ir::Context& ctx,ir::IRList& ir);
     protected:
     //虚函数，子类实现
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
 AST语句接口
+继承自Expression，使用eval_run接口
 */
-class Stmt: public BaseNode{};
+class Stmt: public Expression{
+    protected:
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
+};
 
 /*
 AST声明接口
@@ -71,7 +81,8 @@ class Identifier:public Expression{
     std::string name;
     Identifier(const std::string& name);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
-    virtual int _eval(ir::Context& ctx);
+    //virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -84,6 +95,7 @@ class ConditionExpr: public Expression{
     ConditionExpr(Expression& value);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -100,6 +112,7 @@ class BinaryExpr:public Expression{
     BinaryExpr(int op,Expression& lh,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -114,6 +127,7 @@ class UnaryExpr:public Expression{
     UnaryExpr(int op,Expression& rh);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -128,6 +142,7 @@ class Number:public Expression{
     Number(INTGER value);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -150,6 +165,7 @@ class FunctionCall:public Expression{
     FunctionCallArgList& args;
     FunctionCall(Identifier& name,FunctionCallArgList& args);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -177,6 +193,7 @@ class AssignStmt:public Stmt
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -193,6 +210,7 @@ class AfterInc:public Stmt
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
     virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -276,6 +294,7 @@ class ValueExpr:public Stmt
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
     virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -366,6 +385,7 @@ class ArrayIdentifier:public Identifier
     ArrayIdentifier(Identifier& name);
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
     virtual int _eval(ir::Context& ctx);
+    virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
 }; 
 
 /*
