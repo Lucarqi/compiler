@@ -36,7 +36,9 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
     try{
         //检查当前作用域定义过吗
         auto& find = ctx.find_symbol(this->name.name,true);
-    }catch(error::BaseError& e)
+        std::cerr<<find.name<<std::endl;
+    }
+    catch(error::BaseError& e)
     {
         //没定义过，判断是否是全局作用域
         if(ctx.is_global())
@@ -55,15 +57,21 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
         }
         else
         {
-            //是个局部变量
-            std::string local_re = "%"+std::to_string(ctx.get_id());
-            ctx.insert_symbol(this->name.name,VarInfo(local_re));
-            //MOV赋值
-            ir.emplace_back(irCODE::MOV,irOP(local_re),irOP(this->value.eval(ctx)));
+            ctx.insert_symbol(this->name.name,VarInfo("%"+std::to_string(ctx.get_id())));
+            //使用Assignment语句创建
+            AssignStmt assign(this->name,this->value);
+            assign.line = this->line;
+            assign.column = this->column;
+            assign.generate_ir(ctx,ir);
+            if(this->is_const)
+            {
+                ctx.insert_const(this->name.name,ConstInfo(this->value.eval(ctx)));
+            }
         }
+        return;
     }
     //定义过，抛出重复定义异常
-    throw error::RedefineVar{};
+    throw error::RedefineVar();
 }
 
 //变量的声明
@@ -75,6 +83,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
     }
     catch(error::BaseError& e)
     {
+        std::cerr<<"error"<<std::endl;
         if(ctx.is_global())
         {   //全局变量初始化为0
             ir.emplace_back(irCODE::DATA_BEGIN,irOP("@"+this->name.name));
@@ -86,8 +95,9 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
         {
             ctx.insert_symbol(this->name.name,VarInfo("%"+std::to_string(ctx.get_id())));
         }
+        return;
     }
-    throw error::RedefineVar{};
+    throw error::RedefineVar();
 }
 
 /*
@@ -99,6 +109,7 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     //创建作用域
     ctx.create_scope();
     int arg_len = this->args.list.size();
+    //std::cerr<<arg_len<<std::endl;
     ir.emplace_back(irCODE::FUNCTION_BEGIN,irOP(),arg_len,this->name.name);
     //处理参数,假设都为单变量，没有处理数组
     for(int i=0;i<arg_len;i++)

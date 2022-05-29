@@ -417,7 +417,7 @@ FunctionArgs
 void FuncArgList::print(int lock,bool end,std::ostream& out)
 {
     this->print_format(lock,end,out);
-    out<<"FunctionArgList"<<std::endl;
+    out<<"FunctionArgList: "<<list.size()<<std::endl;
     for(auto i=list.begin();i!=list.end();i++)
     {
         (*i)->print(lock+1,i+1 == list.end(),out);

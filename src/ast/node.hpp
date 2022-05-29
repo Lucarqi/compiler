@@ -455,7 +455,7 @@ class FuncDefine:public BaseNode{
     Identifier& name;
     FuncArgList& args;
     Block& body;
-    FuncDefine(int return_type,Identifier& name,FuncArgList& list,Block& body);
+    FuncDefine(int return_type,Identifier& name,FuncArgList& args,Block& body);
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual void irGEN(ir::Context& ctx,ir::IRList& ir);
 

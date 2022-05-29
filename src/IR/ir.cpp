@@ -79,7 +79,7 @@ void IR::set_filepos()
 void IR::print_irOP(irOP& op,std::ostream& out)
 {
     if(op.is_var()) out<<op.name<<'\t';
-    else if(op.is_imm()) out<<op.imm<<'\t';
+    else if(op.is_imm()) out<<op.value<<'\t';
     else if(op.is_null()) out<<'\t';
 }
 //格式输出

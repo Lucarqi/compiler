@@ -85,8 +85,8 @@ extern int yylex_destroy();
 
 void yyerror(const char* s)
 {
-    std::cerr << sysy::config::filename << "line is:" <<yylloc.first_line << \
-    "column is :" << yylloc.first_column << "error :" << s << std::endl;
+    std::cerr << sysy::config::filename << ":" <<yylloc.first_line << \
+    ":" << yylloc.first_column << " error :" << s << std::endl;
     yylex_destroy();
     std::exit(1);
 }
