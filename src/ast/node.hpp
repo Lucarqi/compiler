@@ -282,7 +282,7 @@ class ReturnStmt:public Stmt
 };
 
 /*
-AST 具体表达式最后的值节点
+AST 表示语句，如a++;函数调用
 ?
 表达式的值
 */

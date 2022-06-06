@@ -44,6 +44,8 @@ enum class irCODE{
     DATA_BEGIN,         //global name
     DATA_WORD,          //global value
     DATA_END,           //global end
+    SET_ARG,            //设置函数传递参数
+    CALL,               //调用函数
 };
 //IR,中间语言定义
 class IR{

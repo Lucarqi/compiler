@@ -11,6 +11,9 @@ ConstInfo::ConstInfo(std::vector<int> shape, std::vector<int> value, bool is_arr
 ConstInfo::ConstInfo(int value)
     :shape({}),value({value}),is_array(false){}
 
+FuncInfo::FuncInfo(int returntype, int argnum, std::vector<int> type)
+    :returntype(returntype), argnum(argnum), type(type){}
+
 Context::Context(){}
 //返回序号
 unsigned Context::get_id(){return ++id;}
@@ -21,6 +24,13 @@ void Context::insert_symbol(std::string name,VarInfo value){
 void Context::insert_const(std::string name,ConstInfo value){
     const_table.back().insert({name,value});
 }
+
+//添加函数信息
+void Context::insert_function(std::string name , FuncInfo func)
+{
+    function_table.insert({name, func});
+}
+
 //根据name查找符号表，返回info引用
 VarInfo& Context::find_symbol(std::string name,bool top)
 {
@@ -60,6 +70,15 @@ ConstInfo& Context::find_const(std::string name,bool top)
     //没找到
     throw error::UndefineVar();
 }
+
+//查找函数信息
+FuncInfo& Context::find_func(std::string name)
+{
+    auto find = function_table.find(name);
+    if(find != function_table.end()) return find->second;
+    else throw error::UndefineFunc();
+}
+
 //创建当前作用域
 void Context::create_scope(){
     symbol_table.push_back({});

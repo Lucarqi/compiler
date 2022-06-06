@@ -36,7 +36,7 @@ void yyerror(const char* s)
         }                                                             \
         yylloc = Current;                                             \
     } while (0)
-//?
+//bison错误处理默认定义
 #define yytnamerr(_yyres, _yystr)                                         \
         ([](char* yyres, const char* yystr) {                             \
             if (*yystr == '"') {                                          \
@@ -210,7 +210,7 @@ UnaryExp: UnaryOp UnaryExp {$$=new sysy::ast::node::UnaryExpr($1,*$2);}
         ;
 
 FuncCall: Ident LPARENT FuncRParams RPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*$3);}
-        | Ident LPARENT LPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*(new sysy::ast::node::FunctionCallArgList()));}
+        | Ident LPARENT RPARENT {$$=new sysy::ast::node::FunctionCall(*$1,*(new sysy::ast::node::FunctionCallArgList()));}
         ;
 
 PrimaryExp  : Lval

@@ -83,7 +83,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
     }
     catch(error::BaseError& e)
     {
-        std::cerr<<"error"<<std::endl;
+        //std::cerr<<"error"<<std::endl;
         if(ctx.is_global())
         {   //全局变量初始化为0
             ir.emplace_back(irCODE::DATA_BEGIN,irOP("@"+this->name.name));
@@ -106,6 +106,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
 */
 void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
 {
+    std::vector<int> list;
     //创建作用域
     ctx.create_scope();
     int arg_len = this->args.list.size();
@@ -117,6 +118,7 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
         std::string arg_re = "%"+std::to_string(ctx.get_id());
         ir.emplace_back(irCODE::MOV,irOP(arg_re),irOP("$arg"+std::to_string(i)));
         ctx.insert_symbol(args.list[i]->name.name,VarInfo(arg_re)); 
+        list.emplace(list.end(),1);
     }
     //处理block
     this->body.generate_ir(ctx,ir);
@@ -125,11 +127,14 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     {
         ir.emplace_back(irCODE::RET,irOP(),0);
     }
-    else 
+    else //返回类型为void
     {
         ir.emplace_back(irCODE::RET);
+        
     }
     ir.emplace_back(irCODE::FUNCTION_END,this->name.name);
+    //添加函数进入函数信息表
+    ctx.insert_function(this->name.name, FuncInfo(this->return_type, arg_len, list));
     //退出作用域
     ctx.end_scope();
 }
@@ -208,9 +213,13 @@ void AfterInc::irGEN(ir::Context& ctx,ir::IRList& ir)
     delete binaryExp;
     delete assign;
 }
+//valueExpr
+void ValueExpr::irGEN(ir::Context& ctx,ir::IRList& ir){
+    this->eval_run(ctx,ir);
+}
+
 void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){}
 void ArrayDeclWithInit::irGEN(ir::Context& ctx,ir::IRList& ir){}
-void ValueExpr::irGEN(ir::Context& ctx,ir::IRList& ir){}
 void ContinueStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
 void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}
 void WhileStmt::irGEN(ir::Context& ctx,ir::IRList& ir){}

@@ -25,4 +25,13 @@ std::string UndefineVar::what()
 {
     return this->message;
 }
+//Undefine of Function
+UndefineFunc::UndefineFunc()
+{
+    message = str;
+}
+std::string UndefineFunc::what()
+{
+    return this->message;
+}
 }

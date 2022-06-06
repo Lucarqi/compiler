@@ -63,6 +63,8 @@ void IR::print(std::ostream& out)
         case irCODE::DIV:print_format("DIV",out);break;
         case irCODE::MOD:print_format("MOD",out);break;
         case irCODE::MOV:print_format("MOV",out);break;
+        case irCODE::SET_ARG:print_format("SET_ARG",out);break;
+        case irCODE::CALL:print_format("CALL",out);break;
     }
     print_irOP(dest,out);
     print_irOP(op1,out);

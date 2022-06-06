@@ -203,12 +203,42 @@ ir::irOP ast::node::AfterInc::_eval_run(ir::Context& ctx,ir::IRList& ir)
     //return a
     return find.name;
 }
-//ValueExpr
+//ValueExpr，表达式语句/函数调用
 ir::irOP ast::node::ValueExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     return this->value.eval_run(ctx,ir);
 }
+
+//函数调用
+ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){
+    //判断调用函数是否存在
+    try
+    {
+        auto find = ctx.find_func(this->name.name);
+        //找到
+        std::vector<ir::irOP> list;
+        //遍历参数列表
+        for(int i = 0; i < this->args.args.size() ; ++i)
+        {
+            list.push_back(this->args.args[i]->eval_run(ctx,ir));
+        }
+        //生成IR,设置参数
+        for(int i = this->args.args.size()-1 ; i>= 0 ; --i)
+        {
+            ir.emplace_back(irCODE::SET_ARG, i, list[i]);
+        }
+        //调用CALL
+        ir::irOP dest = "%"+std::to_string(ctx.get_id());
+        ir.emplace_back(irCODE::CALL, dest, this->name.name);
+        return dest;
+    }
+    catch(error::BaseError& e)
+    {
+        throw e;
+    }
+}
+
 ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){}
-ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){}
 ir::irOP ast::node::ConditionExpr::_eval_run(ir::Context& ctx,ir::IRList& ir){}
+
 }

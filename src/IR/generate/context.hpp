@@ -28,6 +28,17 @@ public:
     ConstInfo(std::vector<int> shape={}, std::vector<int> value={}, bool is_array=false);
     ConstInfo(int value);
 };
+//函数信息
+class FuncInfo{
+public:
+    //返回类型
+    int returntype;
+    //参数个数
+    int argnum;
+    //参数类型:0为单一变量，1为数组
+    std::vector<int> type;
+    FuncInfo(int returntype, int argnum, std::vector<int> type={});
+};
 //context类实现
 class Context{
 public:
@@ -60,5 +71,15 @@ public:
 
     //判断是否在全局作用域
     bool is_global();
+
+    /*
+    保存函数的返回类型，参数个数，参数类型(单一变量/数组)
+    */
+    using FunctionTable = std::unordered_map<std::string, FuncInfo>;
+    FunctionTable function_table={};
+    //添加函数信息
+    void insert_function(std::string name, FuncInfo func);
+    //查找函数信息
+    FuncInfo& find_func(std::string name);
 };
 }
