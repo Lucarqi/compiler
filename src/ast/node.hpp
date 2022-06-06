@@ -52,10 +52,20 @@ class Expression:public BaseNode{
     int eval(ir::Context& ctx);
     //获得该对象表示的寄存器信息，接口
     ir::irOP eval_run(ir::Context& ctx,ir::IRList& ir);
+    //定义ifelse语句的判断结构,跳转
+    struct condResult
+    {
+        ir::irOP thenop;
+        ir::irOP elseop;
+    };
+    //二元运算或者一元运算在condexpr逻辑判断的接口
+    condResult eval_cond_run(ir::Context& ctx,ir::IRList& ir);
+
     protected:
     //虚函数，子类实现
     virtual int _eval(ir::Context& ctx);
     virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
+    virtual condResult _eval_cond_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*
@@ -113,6 +123,7 @@ class BinaryExpr:public Expression{
     virtual void print(int lock=0,bool end=false, std::ostream& out= std::cerr);
     virtual int _eval(ir::Context& ctx);
     virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
+    virtual condResult _eval_cond_run(ir::Context& ctx,ir::IRList& ir);
 };
 
 /*

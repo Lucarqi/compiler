@@ -46,6 +46,20 @@ enum class irCODE{
     DATA_END,           //global end
     SET_ARG,            //设置函数传递参数
     CALL,               //调用函数
+    CMP,                //比较  op1 和 op2
+    JMP,                //跳转到    label
+    MOVEQ,              //dest=op1 if eq or =op2
+    MOVNQ,              //dest=op1 if neq or = op2
+    MOVGT,              //dest=op1 if gt or = op2
+    MOVLT,              //
+    MOVGEQ,             //
+    MOVLEQ,             //
+    JEQ,                //相等
+    JNQ,                //不相等
+    JGT,                //大于
+    JGE,                //大于等于
+    JLT,                //小于
+    JLE,                //小于等于
 };
 //IR,中间语言定义
 class IR{

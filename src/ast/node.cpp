@@ -78,6 +78,22 @@ ir::irOP Expression::eval_run(ir::Context& ctx,ir::IRList& ir)
         abort();
     }
 }
+Expression::condResult Expression::eval_cond_run(ir::Context& ctx,ir::IRList& ir)
+{
+    try
+    {
+        nodes.push(this);
+        auto ret = this->_eval_cond_run(ctx,ir);
+        nodes.pop();
+        return ret;
+    }
+    catch(const std::exception& e)
+    {
+        nodes.pop();
+        std::cerr << e.what() << '\n';
+    }
+    
+}
 
 /*
 Identifier

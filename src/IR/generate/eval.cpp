@@ -146,6 +146,31 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
         case MOD:
             ir.emplace_back(irCODE::MOD,dest,lh,rh);
             break;
+
+        case EQ:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVEQ,dest , 1, 0);
+            break;
+        case NQ:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVNQ,dest , 1, 0);
+            break;
+        case GT:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVGT,dest , 1, 0);
+            break;
+        case LT:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVLT,dest , 1, 0);
+            break;
+        case GEQ:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVGEQ,dest , 1, 0);
+            break;
+        case LEQ:
+            ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
+            ir.emplace_back(irCODE::MOVLEQ,dest , 1, 0);
+            break;
         default:
             throw std::runtime_error("unKown OP");
             break;
@@ -164,6 +189,13 @@ ir::irOP ast::node::UnaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             break;
         case MINUS:
             ir.emplace_back(irCODE::SUB,dest,0,rh.eval_run(ctx,ir)); 
+            return dest;
+            break;
+        case NOT:
+            //与0判断，=0则设置为1，!=0设置为0
+            ir.emplace_back(irCODE::CMP,ir::irOP(),0,rh.eval_run(ctx,ir));
+            ir.emplace_back(irCODE::MOVEQ,dest,1,0);
+            return dest;
             break;
         default:
             throw std::runtime_error("unKown op");
@@ -238,7 +270,79 @@ ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){
     }
 }
 
-ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){}
-ir::irOP ast::node::ConditionExpr::_eval_run(ir::Context& ctx,ir::IRList& ir){}
+//整个逻辑表达式
+ir::irOP ast::node::ConditionExpr::_eval_run(ir::Context& ctx,ir::IRList& ir){
+    return  this->value.eval_run(ctx,ir);
+}
 
+ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){}
+
+/*
+控制流实现部分
+*/
+//逻辑运算判断(一元运算)，处理1/0值，具体的运算在UnaryExpr处
+ast::node::Expression::condResult ast::node::Expression::_eval_cond_run(ir::Context& ctx, IRList& ir)
+{
+    //注意此时then应该是!=0,即判断为真
+    Expression::condResult ret;
+    ir.emplace_back(irCODE::CMP,ir::irOP(),this->eval_run(ctx,ir),ir::irOP(0));
+    ret.thenop = ir::irCODE::JNQ;
+    ret.elseop = ir::irCODE::JEQ;
+    return ret;
+}
+
+/*二元运算逻辑, 处理1/0值，具体运算在BinaryExpr处
+注意AND和OR需要单独处理,实现“短路求值”,未实现
+*/
+ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Context& ctx,ir::IRList& ir)
+{
+    Expression::condResult ret;
+    ir::irOP lh,rh;
+    lh = this->lh.eval_run(ctx,ir);
+    rh = this->rh.eval_run(ctx,ir);
+    switch(this->op)
+    {
+        case EQ:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JEQ;
+            ret.elseop = ir::irCODE::JNQ;
+            break;
+        case NQ:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JNQ;
+            ret.elseop = ir::irCODE::JEQ;
+            break;
+        case GT:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JGT;
+            ret.elseop = ir::irCODE::JLE;
+            break;
+        case GEQ:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JGE;
+            ret.elseop = ir::irCODE::JLT;
+            break;
+        case LT:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JLT;
+            ret.elseop = ir::irCODE::JGE;
+            break;
+        case LEQ:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
+            ret.thenop = ir::irCODE::JLE;
+            ret.elseop = ir::irCODE::JGT;
+            break;
+        case AND:
+            ir.emplace_back(ir::irCODE::CMP, ir)
+            break;
+        case OR:
+            break;
+        default:
+            ir.emplace_back(ir::irCODE::CMP, ir::irOP(), this->eval_run(ctx,ir),ir::irOP(0));
+            ret.thenop = ir::irCODE::JNQ;
+            ret.elseop = ir::irCODE::JEQ;
+            break;
+    }
+    return ret;
+}
 }
