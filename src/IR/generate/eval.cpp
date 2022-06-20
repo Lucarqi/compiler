@@ -105,6 +105,7 @@ int ast::node::AssignStmt::_eval(ir::Context& ctx){}
 ir::irOP ast::node::Expression::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     //do something
+    throw std::runtime_error("can't resolve this");
 }
 
 //Number节点，运行时直接返回 立即数
@@ -126,9 +127,12 @@ ir::irOP ast::node::Identifier::_eval_run(ir::Context& ctx,ir::IRList& ir)
 ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     ir::irOP dest="%"+std::to_string(ctx.get_id()), lh,rh;
-    //立即数或者虚拟寄存器
-    lh = this->lh.eval_run(ctx,ir);
-    rh = this->rh.eval_run(ctx,ir);
+    if(this->op!=AND && this->op!=OR)
+    {
+        //立即数或者虚拟寄存器irOP
+        lh = this->lh.eval_run(ctx,ir);
+        rh = this->rh.eval_run(ctx,ir);
+    }
     //首先实现加减乘除
     switch(this->op){
         case PLUS:
@@ -146,7 +150,7 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
         case MOD:
             ir.emplace_back(irCODE::MOD,dest,lh,rh);
             break;
-
+        // 实现条件判断
         case EQ:
             ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
             ir.emplace_back(irCODE::MOVEQ,dest , 1, 0);
@@ -171,6 +175,48 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
             ir.emplace_back(irCODE::MOVLEQ,dest , 1, 0);
             break;
+        /*处理AND
+        返回dest临时寄存器
+        */
+        case AND:
+        {
+            //定义label
+            std::string label = "Cond_" + std::to_string(ctx.get_id()) + "_End";
+            //定义cond条件判断list模块
+            ir::IRList end;
+            end.emplace_back(ir::irCODE::LABEL,ir::irOP(),ir::irOP(),label);
+            //判断左值条件
+            auto lhs = this->lh.eval_cond_run(ctx,ir);
+            //phi_move，假设为假，0
+            ir.emplace_back(ir::irCODE::PHI_MOVE, dest, ir::irOP(0));
+            ir.back().phi_block = end.begin();
+            ir.emplace_back(lhs.elseop, label);            
+            //判断右值条件
+            auto rhs = this->rh.eval_run(ctx,ir);
+            //phi_move,不假设直接得到
+            ir.emplace_back(ir::irCODE::PHI_MOVE, dest , rhs);
+            ir.back().phi_block = end.begin();
+            //合并endlist
+            ir.splice(ir.end(),end);
+            break;
+        }
+        //处理OR
+        case OR:
+        {
+            std::string label = "Cond_" + std::to_string(ctx.get_id()) + "_End";
+            ir::IRList end;
+            end.emplace_back(ir::irCODE::LABEL, ir::irOP(),ir::irOP(),label);
+            auto lhs = this->lh.eval_cond_run(ctx,ir);
+            //假设上面判断为真
+            ir.emplace_back(ir::irCODE::PHI_MOVE, dest ,ir::irOP(1));
+            ir.back().phi_block = end.begin();
+            ir.emplace_back(lhs.thenop, label);
+            auto rhs = this->rh.eval_run(ctx,ir);
+            ir.emplace_back(ir::irCODE::PHI_MOVE, dest, rhs);
+            ir.back().phi_block = end.begin();
+            ir.splice(ir.end(), end);
+            break;
+        }
         default:
             throw std::runtime_error("unKown OP");
             break;
@@ -250,7 +296,7 @@ ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){
         //找到
         std::vector<ir::irOP> list;
         //遍历参数列表
-        for(int i = 0; i < this->args.args.size() ; ++i)
+        for(int i = 0; i < (int)this->args.args.size() ; ++i)
         {
             list.push_back(this->args.args[i]->eval_run(ctx,ir));
         }
@@ -285,21 +331,24 @@ ast::node::Expression::condResult ast::node::Expression::_eval_cond_run(ir::Cont
 {
     //注意此时then应该是!=0,即判断为真
     Expression::condResult ret;
-    ir.emplace_back(irCODE::CMP,ir::irOP(),this->eval_run(ctx,ir),ir::irOP(0));
+    ir.emplace_back(irCODE::CMP, ir::irOP(), this->eval_run(ctx,ir), ir::irOP(0));
     ret.thenop = ir::irCODE::JNQ;
     ret.elseop = ir::irCODE::JEQ;
     return ret;
 }
 
 /*二元运算逻辑, 处理1/0值，具体运算在BinaryExpr处
-注意AND和OR需要单独处理,实现“短路求值”,未实现
+注意AND和OR需要单独处理,实现“短路求值”
 */
 ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Context& ctx,ir::IRList& ir)
 {
     Expression::condResult ret;
     ir::irOP lh,rh;
-    lh = this->lh.eval_run(ctx,ir);
-    rh = this->rh.eval_run(ctx,ir);
+    if(this->op!=AND && this->op!=OR)
+    {
+        lh = this->lh.eval_run(ctx,ir);
+        rh = this->rh.eval_run(ctx,ir);
+    }
     switch(this->op)
     {
         case EQ:
@@ -332,11 +381,7 @@ ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Cont
             ret.thenop = ir::irCODE::JLE;
             ret.elseop = ir::irCODE::JGT;
             break;
-        case AND:
-            ir.emplace_back(ir::irCODE::CMP, ir)
-            break;
-        case OR:
-            break;
+        //处理AND和OR,返回1为真，0为假，与0作比较
         default:
             ir.emplace_back(ir::irCODE::CMP, ir::irOP(), this->eval_run(ctx,ir),ir::irOP(0));
             ret.thenop = ir::irCODE::JNQ;

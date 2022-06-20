@@ -37,16 +37,16 @@ bool irOP::operator==(const irOP& other)
 }
 
 //IR生成,irOP()为空方便IR生成
-IR::IR(irCODE ircode,irOP dest,irOP op1,irOP op2,irOP op3)
-    :ircode(ircode),dest(dest),op1(op1),op2(op2),op3(op3){}
-IR::IR(irCODE ircode,irOP dest,irOP op1,irOP op2)
-    :ircode(ircode),dest(dest),op1(op1),op2(op2),op3(irOP()){}
-IR::IR(irCODE ircode,irOP dest,irOP op1)
-    :ircode(ircode),dest(dest),op1(op1),op2(irOP()),op3(irOP()){}
-IR::IR(irCODE ircode,irOP dest)
-    :ircode(ircode),dest(dest),op1(irOP()),op2(irOP()),op3(irOP()){}
-IR::IR(irCODE ircode)
-    :ircode(ircode),dest(irOP()),op1(irOP()),op2(irOP()),op3(irOP()){}
+IR::IR(irCODE ircode,irOP dest,irOP op1,irOP op2,irOP op3,std::string label)
+    :ircode(ircode),dest(dest),op1(op1),op2(op2),op3(op3),label(label){}
+IR::IR(irCODE ircode,irOP dest,irOP op1,irOP op2,std::string label)
+    :ircode(ircode),dest(dest),op1(op1),op2(op2),op3(irOP()),label(label){}
+IR::IR(irCODE ircode,irOP dest,irOP op1,std::string label)
+    :ircode(ircode),dest(dest),op1(op1),op2(irOP()),op3(irOP()),label(label){}
+IR::IR(irCODE ircode,irOP dest,std::string label)
+    :ircode(ircode),dest(dest),op1(irOP()),op2(irOP()),op3(irOP()),label(label){}
+IR::IR(irCODE ircode,std::string label)
+    :ircode(ircode),dest(irOP()),op1(irOP()),op2(irOP()),op3(irOP()),label(label){}
 //IR输出
 void IR::print(std::ostream& out)
 {
@@ -65,11 +65,35 @@ void IR::print(std::ostream& out)
         case irCODE::MOV:print_format("MOV",out);break;
         case irCODE::SET_ARG:print_format("SET_ARG",out);break;
         case irCODE::CALL:print_format("CALL",out);break;
+        case irCODE::CMP:print_format("CMP",out);break;
+        case irCODE::JMP:print_format("JMP",out);break;
+        case irCODE::MOVEQ:print_format("MOVEQ",out);break;
+        case irCODE::MOVNQ:print_format("MOVNQ",out);break;
+        case irCODE::MOVGT:print_format("MOVGT",out);break;
+        case irCODE::MOVLT:print_format("MOVLT",out);break;
+        case irCODE::MOVGEQ:print_format("MOVGEQ",out);break;
+        case irCODE::MOVLEQ:print_format("MOVLEQ",out);break;
+        case irCODE::JEQ:print_format("JEQ",out);break;
+        case irCODE::JNQ:print_format("JNQ",out);break;
+        case irCODE::JGT:print_format("JGT",out);break;
+        case irCODE::JGE:print_format("JGE",out);break;
+        case irCODE::JLT:print_format("JLT",out);break;
+        case irCODE::JLE:print_format("JLE",out);break;
+        case irCODE::LABEL:print_format("LABEL",out);break;
+        case irCODE::PHI_MOVE:print_format("PHI_MOVE",out);break;
+        case irCODE::SAL:print_format("SAL",out);break;
+        case irCODE::STORE:print_format("STORE",out);break;
+        case irCODE::DATA_SPACE:print_format("SPACE",out);break;
+        case irCODE::MALLOC_IN_STACK:print_format("MALLOC_IN_STACK",out);break;
+
+        default:
+            std::cerr <<"Unkown irCODE"<<std::endl;
     }
     print_irOP(dest,out);
     print_irOP(op1,out);
     print_irOP(op2,out);
     print_irOP(op3,out);
+    out<<this->label;
     out<<std::endl;
 }
 //设置源码位置
@@ -83,10 +107,13 @@ void IR::print_irOP(irOP& op,std::ostream& out)
     if(op.is_var()) out<<op.name<<'\t';
     else if(op.is_imm()) out<<op.value<<'\t';
     else if(op.is_null()) out<<'\t';
+    
 }
 //格式输出
 void IR::print_format(std::string code,std::ostream& out)
 {
     out<<code<<std::string(16-code.size(),' ');
 }
+
+
 }

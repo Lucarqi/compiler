@@ -91,8 +91,8 @@ Expression::condResult Expression::eval_cond_run(ir::Context& ctx,ir::IRList& ir
     {
         nodes.pop();
         std::cerr << e.what() << '\n';
+        abort();
     }
-    
 }
 
 /*

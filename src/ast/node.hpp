@@ -55,8 +55,8 @@ class Expression:public BaseNode{
     //定义ifelse语句的判断结构,跳转
     struct condResult
     {
-        ir::irOP thenop;
-        ir::irOP elseop;
+        ir::irCODE thenop;
+        ir::irCODE elseop;
     };
     //二元运算或者一元运算在condexpr逻辑判断的接口
     condResult eval_cond_run(ir::Context& ctx,ir::IRList& ir);
@@ -376,7 +376,7 @@ class ArrayDeclWithInitVal:public Expression
 {
     public:
     bool is_number;
-    // ?指针
+    
     Expression* value;
     std::vector<ArrayDeclWithInitVal*> list;
     ArrayDeclWithInitVal(bool is_number,Expression* value);
@@ -386,7 +386,8 @@ class ArrayDeclWithInitVal:public Expression
 /*
 AST 数组的标识符定义
 name:标识符
-shape:数字维度大小
+shape:数组维度大小
+:指a[3][5]这种
 */
 class ArrayIdentifier:public Identifier
 {
@@ -397,6 +398,7 @@ class ArrayIdentifier:public Identifier
     virtual void print(int lock=0,bool end=false,std::ostream& out=std::cerr);
     virtual int _eval(ir::Context& ctx);
     virtual ir::irOP _eval_run(ir::Context& ctx,ir::IRList& ir);
+    void store_runtime(ir::irOP value,ir::Context& ctx,ir::IRList& ir);
 }; 
 
 /*

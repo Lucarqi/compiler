@@ -1,6 +1,8 @@
+#include <sstream>
 #include "ast/generate/generate.hpp"
 #include "config.hpp"
 #include "IR/generate/generate.hpp"
+#include "asm/generate/generate.hpp"
 
 int main(int arg,char** argv)
 {   
@@ -18,10 +20,13 @@ int main(int arg,char** argv)
     //输出IR
     if(config::print_ir)
     {
-        for(auto& i:ir)
-        {
-            i.print();
-        }
+        for(auto& i:ir) i.print(std::cerr);
     }
+    /*
+    std::stringstream asmbuffer;
+    //生成汇编到文件
+    sysy::asm_generator::generate_asm(ir,asmbuffer);
+    *config::output << asmbuffer.str();
+    */
     return 0;
 }

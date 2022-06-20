@@ -176,8 +176,6 @@ ConstDefArray   : ArrayName ASSIGN ArrayInit {$$ = new sysy::ast::node::ArrayDec
 Exp : AddExp
     ;
 
-Cond: LOrExp 
-    ;
 
 LOrExp  : LOrExp OR LAndExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
         | LAndExp
@@ -187,8 +185,8 @@ LAndExp : LAndExp AND EqExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
         | EqExp
         ;
 
-EqExp   : EqExp NQ RelExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
-        | EqExp EQ RelExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
+EqExp   : EqExp EQ RelExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
+        | EqExp NQ RelExp {$$=new sysy::ast::node::BinaryExpr($2,*$1,*$3);}
         | RelExp
         ;
 
@@ -248,7 +246,7 @@ FuncFParam  : FuncFParamOne
 FuncFParamOne   : BType Ident {$$=new sysy::ast::node::FuncArg($1,*$2);}
                 ;
 
-//这里函数的参数是数组类型,父类向子类显示类型转换
+//是a[][3]类型，我就实际变为a[1][3]
 FuncFParamArray : FuncFParamOne LBRACKET RBRACKET 
                 {
                         $$=new sysy::ast::node::FuncArg($1->type,
@@ -328,6 +326,8 @@ RelOp   : GT
         | LT
         | LEQ
         ;
+
+Cond    : LOrExp;
 
 AddOp   : PLUS
         | MINUS

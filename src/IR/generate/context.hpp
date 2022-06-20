@@ -1,9 +1,10 @@
 #pragma once
-
+ 
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <stack>
 
 #include "IR/ir.hpp"
 //作用域定义
@@ -71,7 +72,7 @@ public:
 
     //判断是否在全局作用域
     bool is_global();
-
+    bool in_loop();
     /*
     保存函数的返回类型，参数个数，参数类型(单一变量/数组)
     */
@@ -81,5 +82,16 @@ public:
     void insert_function(std::string name, FuncInfo func);
     //查找函数信息
     FuncInfo& find_func(std::string name);
+
+    //作用于while循环各种参数
+    std::stack<std::string> loop_label;
+    std::stack<std::vector<SymbolTable>> loop_continue_symbol_snapshot;
+    std::stack<std::vector<SymbolTable>> loop_break_symbol_snapshot;
+    std::stack<std::map<std::pair<int, std::string>, std::string>>
+        loop_continue_phi_move;
+    std::stack<std::map<std::pair<int, std::string>, std::string>>
+        loop_break_phi_move;
+    std::stack<std::vector<std::string>> loop_var{};
+    
 };
 }

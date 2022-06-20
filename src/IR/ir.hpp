@@ -60,6 +60,12 @@ enum class irCODE{
     JGE,                //大于等于
     JLT,                //小于
     JLE,                //小于等于
+    LABEL,              //label
+    PHI_MOVE,           //判断赋值
+    SAL,                //左移
+    STORE,              //op1[op2]=op3
+    DATA_SPACE,         //全局变量数组大小4的倍数
+    MALLOC_IN_STACK,    //为临时数组分配空间 name size
 };
 //IR,中间语言定义
 class IR{
@@ -70,12 +76,18 @@ class IR{
     irCODE ircode;
     //操作数
     irOP dest,op1,op2,op3;
+    std::string label;
     //IR格式
-    IR(irCODE ircode,irOP dest,irOP op1,irOP op2,irOP op3);
-    IR(irCODE ircode,irOP dest,irOP op1,irOP op2);
-    IR(irCODE ircode,irOP dest,irOP op1);
-    IR(irCODE ircode,irOP dest);
-    IR(irCODE ircode);
+    IR(irCODE ircode,irOP dest,irOP op1,irOP op2,irOP op3,
+        std::string label = "");
+    IR(irCODE ircode,irOP dest,irOP op1,irOP op2,
+        std::string label = "");
+    IR(irCODE ircode,irOP dest,irOP op1,
+        std::string label = "");
+    IR(irCODE ircode,irOP dest,
+        std::string label = "");
+    IR(irCODE ircode,
+        std::string label = "");
     //IR输出到终端,使用std::cerr
     void print(std::ostream& out=std::cerr);
     //IR对应源码位置
@@ -84,6 +96,8 @@ class IR{
     void print_irOP(irOP& op,std::ostream& out=std::cerr);
     //格式输出
     void print_format(std::string name,std::ostream& out=std::cerr);
+    //定义迭代器
+    std::list<IR>::iterator phi_block;
 };
 //全部IR的list,.emplace_back添加IR对象
 using IRList=std::list<IR>;
