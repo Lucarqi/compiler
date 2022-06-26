@@ -374,7 +374,6 @@ void ArrayDeclWithInitVal::print(int lock,bool end,std::ostream& out)
 
 /*
 ArrayIdentifier
-// 实例化Identifier？
 */
 ArrayIdentifier::ArrayIdentifier(Identifier& name)
     :Identifier(name),name(name){}

@@ -30,7 +30,6 @@ bool irOP::operator==(const irOP& other)
     if(this->is_var())return this->name == other.name;
     else if(this->is_imm())return this->value == other.value;
     else {
-        // ?
         assert(this->is_null());
         return true;
     }
@@ -85,7 +84,7 @@ void IR::print(std::ostream& out)
         case irCODE::STORE:print_format("STORE",out);break;
         case irCODE::DATA_SPACE:print_format("SPACE",out);break;
         case irCODE::MALLOC_IN_STACK:print_format("MALLOC_IN_STACK",out);break;
-
+        case irCODE::LOAD:print_format("LOAD",out);break;
         default:
             std::cerr <<"Unkown irCODE"<<std::endl;
     }

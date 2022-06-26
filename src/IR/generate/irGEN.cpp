@@ -46,7 +46,7 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
         if(ctx.is_global())
         {
             //添加IR语句
-            ir.emplace_back(irCODE::DATA_BEGIN,irOP("@"+this->name.name));
+            ir.emplace_back(irCODE::DATA_BEGIN,"@"+this->name.name);
             ir.emplace_back(irCODE::DATA_WORD,irOP(this->value.eval(ctx)));
             ir.emplace_back(irCODE::DATA_END);
             //加入符号表
@@ -88,7 +88,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
         //std::cerr<<"error"<<std::endl;
         if(ctx.is_global())
         {   //全局变量初始化为0
-            ir.emplace_back(irCODE::DATA_BEGIN,irOP("@"+this->name.name));
+            ir.emplace_back(irCODE::DATA_BEGIN,"@"+this->name.name);
             ir.emplace_back(irCODE::DATA_WORD,irOP(0));
             ir.emplace_back(irCODE::DATA_END);
             ctx.insert_symbol(this->name.name,VarInfo("@"+this->name.name));
@@ -113,7 +113,7 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     ctx.create_scope();
     int arg_len = this->args.list.size();
     //std::cerr<<arg_len<<std::endl;
-    ir.emplace_back(irCODE::FUNCTION_BEGIN,irOP(),arg_len,irOP(this->name.name));
+    ir.emplace_back(irCODE::FUNCTION_BEGIN,irOP(),arg_len,this->name.name);
     //考虑数组情况
     for(int i=0;i<arg_len;i++)
     {
@@ -141,16 +141,18 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     }
     //处理block
     this->body.generate_ir(ctx,ir);
+    /*
     //处理return
     if(this->return_type == INT)
     {
-        ir.emplace_back(irCODE::RET,irOP(),0);
+        ir.emplace_back(irCODE::RET,irOP(0));
     }
     else //返回类型为void
     {
         ir.emplace_back(irCODE::RET);
         
     }
+    */
     ir.emplace_back(irCODE::FUNCTION_END,this->name.name);
     //添加函数进入函数信息表
     ctx.insert_function(this->name.name, FuncInfo(this->return_type, arg_len, list));
@@ -174,9 +176,9 @@ void Block::irGEN(ir::Context& ctx,IRList& ir)
 void ReturnStmt::irGEN(ir::Context& ctx,IRList& ir)
 {
     if(this->expr!=NULL)
-        ir.emplace_back(ir::irCODE::RET,irOP(),this->expr->eval_run(ctx,ir));
+        ir.emplace_back(ir::irCODE::RET,this->expr->eval_run(ctx,ir));
     else 
-        ir.emplace_back(ir::irCODE::RET);
+        ir.emplace_back(ir::irCODE::RET,ir::irOP());
 }
 
 //DeclareStmt：多个赋值语句
@@ -285,7 +287,7 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
         this->elsestmt.generate_ir(ctx,ir);
         return;
     }
-    ir.emplace_back(ret.elseop,irOP(),irOP(), "IF_"+id+"_ELSE");
+    ir.emplace_back(ret.elseop, "IF_"+id+"_ELSE");
     //先分别生成thenstmt和elsestmt的各种临时变量和ir语句
     ir::IRList thenlist,elselist;
     ir::Context then_ctx = ctx, else_ctx = ctx;
@@ -300,7 +302,7 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
     ctx.id = else_ctx.id;
 
     ir::IRList end;
-    end.emplace_back(ir::irCODE::LABEL,irOP(),irOP(), "IF_"+id+"_END");
+    end.emplace_back(ir::irCODE::LABEL, "IF_"+id+"_END");
     //根据thenstmt生成的symbol表进行phi_move变化
     for(int i=0;i < (int)then_ctx.symbol_table.size();i++)
     {
@@ -328,8 +330,8 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
     //连接修改的then和else
     ir.splice(ir.end(),thenlist);
     //elsestmt不是空的，添加JMP语句
-    if(!elselist.empty()) ir.emplace_back(irCODE::JMP, irOP(),irOP(),"IF_"+id+"_END");
-    ir.emplace_back(irCODE::LABEL, irOP(),irOP(),"IF_"+id+"_ELSE");
+    if(!elselist.empty()) ir.emplace_back(irCODE::JMP,"IF_"+id+"_END");
+    ir.emplace_back(irCODE::LABEL,"IF_"+id+"_ELSE");
     ir.splice(ir.end(),elselist);
     ir.splice(ir.end(),end);
     ctx.end_scope();
@@ -365,16 +367,16 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
 
     // 此处的块与基本快有所不同，见下图
     /*      ┌───────────┐
-        COND:│ cmp       │
+       COND:│ cmp       │
             ├───────────┤
         JMP:│ // jne DO │
             │ jeq END   │
             ├───────────┤
-        DO:│ ...       │
+         DO:│ ...       │
             │ break;    │
             │ continue; │
             ├───────────┤
-    CONTINUE:│ jmp COND  │
+   CONTINUE:│ jmp COND  │
             ├───────────┤
         END:│           │
             └───────────┘
@@ -625,7 +627,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx.end_scope();
 }
 
-//无初始值的数组声明
+//数组初始值无显示定义，全部定义为0
 void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){
     //数组大小
     std::vector<int> shape;
@@ -635,14 +637,14 @@ void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){
     //总的大小
     for(auto i : shape) size*=i;
     if(ctx.is_global())
-    {
+    {   //分配一个全局的未初始化的数组，.space值全部为0
         ir.emplace_back(irCODE::DATA_BEGIN,"@&"+this->name.name.name);
         ir.emplace_back(irCODE::DATA_SPACE,size*4);
         ir.emplace_back(irCODE::DATA_END);
         ctx.insert_symbol(this->name.name.name,VarInfo("@&"+this->name.name.name,true,shape));
     }
     else
-    {
+    {   //分配一个局部的未初始化数组，放在栈中，全部为0
         ctx.insert_symbol(this->name.name.name,
                         VarInfo("&"+ std::to_string(ctx.get_id()),true,shape));
         ir.push_back(IR(irCODE::MALLOC_IN_STACK,
@@ -650,35 +652,59 @@ void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){
                     size*4));
     }
 }
-//带初始值的数组声明
-//辅助函数
+/*
+参数：
+that:这个带初始值的数组a[2][3]={...}
+v:数组的初始值{....}
+shape:数组大小
+init_value:存中间值
+index:shape的维度
+*/
 namespace{
     void _ArrayDeclWithInit(ArrayDeclWithInit& that,
-    std::vector<ArrayDeclWithInitVal*> v,std::vector<Expression*> shape,
-    std::vector<int>& init_value,int index,
+    std::vector<ArrayDeclWithInitVal*> v,
+    std::vector<Expression*> shape,
+    std::vector<int>& init_value,
+    int index,
+    int total_size,
     Context& ctx,IRList& ir)
     {
+        //常量数组，保存值
         const auto output_const = [&](int value, bool is_space = false) {
+        //占位空间
         if (is_space) {
-        if (ctx.is_global()) {
-            for (int i = 0; i < value; i++) init_value.push_back(0);
-            ir.emplace_back(irCODE::DATA_SPACE, value * 4);
-        } else {
-            for (int i = 0; i < value; i++) {
-            init_value.push_back(0);
+            //在全局域中
+            if (ctx.is_global()) {
+                //将init_value添加0，占位子
+                for (int i = 0; i < value; i++) init_value.push_back(0);
+                //全局空间分配.space，占位子(全为0)
+                ir.emplace_back(irCODE::DATA_SPACE, value * 4);
+            } 
+            else 
+            {   //直接占位子，不生成STORE，栈中默认是0
+                for (int i = 0; i < value; i++) {
+                    init_value.push_back(0);
+                }
+            }
+        }//是值 
+        else {
+            //是全局作用域，添加DATA_WORD
+            init_value.push_back(value);
+            if (ctx.is_global())
+                ir.emplace_back(irCODE::DATA_WORD, value);
+            else
+            {
+                //STORE保存：store ，数组符号，偏移(4位)，值
+                ir.emplace_back(irCODE::STORE, irOP(),
+                                irOP(ctx.find_symbol(that.name.name.name).name),
+                                init_value.size() * 4 - 4, value);
             }
         }
-        } else {
-        init_value.push_back(value);
-        if (ctx.is_global())
-            ir.emplace_back(irCODE::DATA_WORD, value);
-        else
-            ir.emplace_back(irCODE::STORE, irOP(),
-                            irOP(ctx.find_symbol(that.name.name.name).name),
-                            init_value.size() * 4 - 4, value);
-        }
+        if((int)init_value.size() > total_size) 
+            std::runtime_error("数组初始值空间过大:"+that.name.name.name);
     };
     const auto output = [&](irOP value, bool is_space = false) {
+        //与上面类似，传入的是irOP，因为可以是变量
         if (is_space) {
             if (ctx.is_global()) {
                 for (int i = 0; i < value.value; i++) init_value.push_back(0);
@@ -693,6 +719,7 @@ namespace{
             }
         } 
         else {
+            //占个位置
             init_value.push_back(0);
             if (ctx.is_global())
                 ir.emplace_back(irCODE::DATA_WORD, value);
@@ -701,15 +728,21 @@ namespace{
                                 irOP(ctx.find_symbol(that.name.name.name).name),
                                 init_value.size() * 4 - 4, value);
         }
+        if((int)init_value.size() > total_size) 
+            std::runtime_error("数组初始值空间过大:"+that.name.name.name);
     };
-
+    //到达最大维度，分配完毕
     if (index >= (int)shape.size()) return;
     int size = 1, write_size = 0;
+    //当前维度大小:[2][3]就是3，[2][3][4]就是12
     for (auto it = shape.begin() + index; it != shape.end(); it++)
         size *= (*it)->eval(ctx);
     int size_this_shape = size / shape[index]->eval(ctx);
+    //遍历list
     for (auto i : v) 
     {
+        //std::cerr<<i->is_number<<std::endl;
+        //当前初始值是个数字
         if (i->is_number) {
             write_size++;
             try {
@@ -718,66 +751,74 @@ namespace{
                 else
                 output(i->value->eval(ctx));
             } catch (...) {
+                //局部数组，存在变量
                 output(i->value->eval_run(ctx, ir));
             }
         } 
-        else {
-        if (write_size % size_this_shape != 0) {
-            if (that.is_const)
-            output_const(size_this_shape - (write_size % size_this_shape), true);
-            else
-            output(size_this_shape - (write_size % size_this_shape), true);
+        else 
+        {
+            if (write_size % size_this_shape != 0) 
+            {   //剩余补0，占位子
+                if (that.is_const)
+                    output_const(size_this_shape - (write_size % size_this_shape), true);
+                else
+                    output(size_this_shape - (write_size % size_this_shape), true);
+            }
+            //进入下一层
+            _ArrayDeclWithInit(that, i->list, shape, init_value, index + 1,total_size,
+                                    ctx, ir);
+            write_size += size_this_shape;
         }
-        _ArrayDeclWithInit(that, i->list, shape, init_value, index + 1,
-                                ctx, ir);
-        write_size += size_this_shape;
-        }
-    }
+    }//末尾的空间，占位子
+    
     if (that.is_const)
         output_const(size - write_size, true);
     else
         output(size - write_size, true);
     }
 }
-//处理带初始值的
+/*
+数组带初始值的初始化
+*/
 void ArrayDeclWithInit::irGEN(ir::Context& ctx,ir::IRList& ir){
+
     std::vector<int> shape;
     for(auto i : this->name.shape) shape.push_back(i->eval(ctx));
     int size=1;
-    //总的大小
+    //数组总大小
     for(auto i : shape) size*=i;
+    //已经存放的数据
     std::vector<int> init_value;
     if(ctx.is_global())
     {
         ir.emplace_back(irCODE::DATA_BEGIN,"@&"+this->name.name.name);
+        //生成全局数组
         _ArrayDeclWithInit(*this,this->value.list,this->name.shape,
-                            init_value,0,ctx,ir);
+                            init_value,0,size,ctx,ir);
         ir.emplace_back(irCODE::DATA_END);
         ctx.insert_symbol(this->name.name.name,
                             VarInfo("@&"+this->name.name.name,true,shape));
     }
     else
     {
-        //局部数组
+        //局部数组：%&开头
         ctx.insert_symbol(this->name.name.name,
-                            VarInfo("%&"+std::to_string(ctx.get_id())));
-        //需要分配空间拉
+                            VarInfo("%&"+std::to_string(ctx.get_id()),true,shape));
+        //分配在栈中：符号，大小
         ir.emplace_back(irCODE::MALLOC_IN_STACK,
                         irOP(ctx.find_symbol(this->name.name.name).name),
                         size*4);
-        //将分配空间参数压栈 name,0,size
-        ir.emplace_back(irCODE::SET_ARG,0,
-                        irOP(ctx.find_symbol(this->name.name.name).name));
-        ir.emplace_back(irCODE::SET_ARG,1,irOP(0));
-        ir.emplace_back(irCODE::SET_ARG,2,size);
-        ir.emplace_back(irCODE::CALL,"memset");
+        //开始分配标志
+        //ir.emplace_back(irCODE::CALL,"memset");
+        //使用STORE表示压入数据
         _ArrayDeclWithInit(*this,this->value.list,this->name.shape,
-                            init_value,0,ctx,ir);
+                            init_value,0,size,ctx,ir);
     }
 }
 
-//向数组a[3][4]写入某个值
-//value：写入的值
+/*
+数组作为左值进行存储，此时维度中可以是变量
+*/
 void ArrayIdentifier::store_runtime(ir::irOP value,ir::Context& ctx, ir::IRList& ir)
 {
     //查找数组寄存器
@@ -786,40 +827,41 @@ void ArrayIdentifier::store_runtime(ir::irOP value,ir::Context& ctx, ir::IRList&
     {
         if(this->shape.size() == v.shape.size())
         {
-            irOP index = "%" + std::to_string(ctx.get_id());
-            irOP size = "%" + std::to_string(ctx.get_id());
-            ir.emplace_back(
-                irCODE::SAL, index, 
-                this->shape[this->shape.size()-1]->eval_run(ctx,ir),2
-            );
-            if(this->shape.size()!=1)
-            {
-                irOP temp;
-                ir.emplace_back(irCODE::MOV,size,4*v.shape[this->shape.size()-1]);
+            /*判断维度大小，当数组维度出现变量时，不好检查错误
+            for(int i=0;i < (int)v.shape.size();i++){
+                if(this->shape[i]->eval(ctx) >= v.shape[i])
+                    std::runtime_error(this->name.name+"数组大小超出范围");
+            }*/
+            //偏移值，和中间size大小
+            irOP index = "%"+std::to_string(ctx.get_id());
+            irOP size = "%"+std::to_string(ctx.get_id());
+            ir.emplace_back(ir::irCODE::SAL,index,
+                this->shape[this->shape.size()-1]->eval_run(ctx,ir),2);//乘以4
+            if(this->shape.size()!=1){
+                irOP temp = "%"+std::to_string(ctx.get_id());
+                ir.emplace_back(ir::irCODE::MOV,size,4*v.shape[this->shape.size()-1]);
             }
-            for (int i = this->shape.size() - 2; i >= 0; i--) {
-                irOP tmp = "%" + std::to_string(ctx.get_id());
-                irOP tmp2 = "%" + std::to_string(ctx.get_id());
-                ir.emplace_back(irCODE::MUL, tmp, size,
-                                this->shape[i]->eval_run(ctx, ir));
-                ir.emplace_back(irCODE::ADD, tmp2, index, tmp);
+            for(int i = this->shape.size()-2;i>=0;i--){
+                irOP tmp = "%"+std::to_string(ctx.get_id());
+                irOP tmp2 = "%"+std::to_string(ctx.get_id());
+                ir.emplace_back(ir::irCODE::MUL,tmp,size,this->shape[i]->eval_run(ctx,ir));
+                ir.emplace_back(ir::irCODE::ADD,tmp2,index,tmp);
                 index = tmp2;
-                if (i != 0) {
-                    irOP tmp = "%" + std::to_string(ctx.get_id());
-                    ir.emplace_back(irCODE::MUL, tmp, size, v.shape[i]);
-                    size = tmp;
+                if(i!=0){
+                    irOP tmp = "%"+std::to_string(ctx.get_id());
+                    ir.emplace_back(ir::irCODE::MUL,tmp,size,v.shape[i]);
                 }
             }
-            ir.emplace_back(irCODE::STORE, irOP(), v.name, index, value);
+            ir.emplace_back(ir::irCODE::STORE,ir::irOP(),v.name,index,value);
         }
         else 
         {
-            throw std::runtime_error("shape is not match");
+            throw std::runtime_error("数组大小不匹配");
         }
     }
     else 
     {
-        throw std::runtime_error(this->name.name + " is not a array");
+        throw std::runtime_error(this->name.name + ":不是数组");
     }
 }
 }

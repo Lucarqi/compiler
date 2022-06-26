@@ -3,6 +3,7 @@
 #include "config.hpp"
 
 namespace sysy::config{
+
 FILE* inputfile = stdin;
 std::ostream* output = &std::cout;
 bool print_ast = false;
@@ -24,6 +25,7 @@ void parser_arg(int arg, char** argv)
         {
             if(s == 1)
             {   //向文件写
+                //std::cerr<<argv[i]<<std::endl;
                 output = new std::ofstream(argv[i], std::ofstream::out);
             }
             else if(s == 0)

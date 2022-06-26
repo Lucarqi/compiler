@@ -22,11 +22,11 @@ int main(int arg,char** argv)
     {
         for(auto& i:ir) i.print(std::cerr);
     }
-    /*
     std::stringstream asmbuffer;
     //生成汇编到文件
     sysy::asm_generator::generate_asm(ir,asmbuffer);
     *config::output << asmbuffer.str();
-    */
+
+    if(config::output!=&std::cout) delete config::output;
     return 0;
 }

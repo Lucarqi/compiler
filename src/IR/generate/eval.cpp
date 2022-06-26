@@ -94,9 +94,59 @@ int ast::node::ValueExpr::_eval(ir::Context& ctx)
 {
     return this->value.eval(ctx);
 }
-int ast::node::ArrayIdentifier::_eval(ir::Context& ctx){}
-int ast::node::AfterInc::_eval(ir::Context& ctx){}
-int ast::node::AssignStmt::_eval(ir::Context& ctx){}
+//常量数组直接求值
+int ast::node::ArrayIdentifier::_eval(ir::Context& ctx){
+    auto v = ctx.find_const(this->name.name);
+    if(v.is_array){
+        if(v.shape.size()!=this->shape.size()){
+            int index = 0, size = 1;
+            for (int i = this->shape.size() + 1; i >= 0; i++) {
+                index += this->shape[i]->eval(ctx) * size;
+                size *= v.shape[i];
+            }
+            return v.value[index];
+        }
+        else {
+            throw std::runtime_error(this->name.name + "数组维度大小不匹配");
+        }
+    }
+    else {
+        throw std::runtime_error(this->name.name+"：不是数组");
+    }
+}
+//常量直接求值
+int ast::node::Identifier::_eval(ir::Context& ctx){
+    auto v = ctx.find_const(this->name);
+    if (v.is_array) {
+        throw std::runtime_error(this->name + " is a array.");
+    } 
+    else {
+        return v.value.front();
+    }
+}//编译期间求值
+int ast::node::AfterInc::_eval(ir::Context& ctx){
+    if(dynamic_cast<ast::node::ArrayIdentifier*>(&this->lname)!=nullptr){
+        throw std::runtime_error("只有局部变量可以a++直接求值");
+    }
+    auto val = this->lname.eval(ctx);
+    auto v = ctx.find_symbol(this->lname.name);
+    if(v.name[0]!='%'||v.is_array){
+        throw std::runtime_error("只有局部变量可以a++直接求值");
+    }
+    int value = this->op==PLUS?val + 1:val - 1;
+    return value;
+}
+int ast::node::AssignStmt::_eval(ir::Context& ctx){
+    if(dynamic_cast<ast::node::ArrayIdentifier*>(&this->lname)!=nullptr){
+        throw std::runtime_error("只有局部变量可以直接求值");
+    }
+    auto val = this->rexpr.eval(ctx);
+    auto v = ctx.find_symbol(this->lname.name);
+    if(v.name[0]!='%'||v.is_array){
+        throw std::runtime_error("只有局部变量可以直接求值");
+    }
+    return val;
+}
 
 /*
 所有_eval_run实现，构建IR语句，返回目标寄存器dest
@@ -123,7 +173,7 @@ ir::irOP ast::node::Identifier::_eval_run(ir::Context& ctx,ir::IRList& ir)
     return dest;
 }
 
-//二元运算的IR构建，含 虚拟寄存器
+//二元运算的IR构建，含虚拟寄存器
 ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     ir::irOP dest="%"+std::to_string(ctx.get_id()), lh,rh;
@@ -278,7 +328,7 @@ ir::irOP ast::node::AfterInc::_eval_run(ir::Context& ctx,ir::IRList& ir)
     delete num;
     delete binaryExp;
     delete assign;
-    //return a
+    
     return find.name;
 }
 //ValueExpr，表达式语句/函数调用
@@ -289,39 +339,78 @@ ir::irOP ast::node::ValueExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 
 //函数调用
 ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){
-    //判断调用函数是否存在
-    try
+    /*先不使用判断find_func*/
+    std::vector<ir::irOP> list;
+    //遍历参数列表
+    for(int i = 0; i < (int)this->args.args.size() ; ++i)
     {
-        auto find = ctx.find_func(this->name.name);
-        //找到
-        std::vector<ir::irOP> list;
-        //遍历参数列表
-        for(int i = 0; i < (int)this->args.args.size() ; ++i)
-        {
-            list.push_back(this->args.args[i]->eval_run(ctx,ir));
-        }
-        //生成IR,设置参数
-        for(int i = this->args.args.size()-1 ; i>= 0 ; --i)
-        {
-            ir.emplace_back(irCODE::SET_ARG, i, list[i]);
-        }
-        //调用CALL
-        ir::irOP dest = "%"+std::to_string(ctx.get_id());
-        ir.emplace_back(irCODE::CALL, dest, this->name.name);
-        return dest;
+        list.push_back(this->args.args[i]->eval_run(ctx,ir));
     }
-    catch(error::BaseError& e)
+    //生成IR,反向设置参数
+    for(int i = this->args.args.size()-1 ; i>= 0 ; --i)
     {
-        throw e;
+        ir.emplace_back(irCODE::SET_ARG, i, list[i]);
     }
+    //调用CALL
+    ir::irOP dest = "%"+std::to_string(ctx.get_id());
+    ir.emplace_back(irCODE::CALL, dest, this->name.name);
+    return dest;
 }
 
 //整个逻辑表达式
 ir::irOP ast::node::ConditionExpr::_eval_run(ir::Context& ctx,ir::IRList& ir){
     return  this->value.eval_run(ctx,ir);
 }
-
-ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){}
+/*
+数组作为右值，此时的维度可以是变量
+*/
+ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){
+    //std::cerr<<this->name.name<<std::endl;
+    auto v = ctx.find_symbol(this->name.name);
+    if(v.is_array)
+    {
+        //作为右值载入，一定存在
+        if(this->shape.size() == v.shape.size()){
+            /*判断维度大小，这里不好判断数组维度大小
+            for(int i=0;i < (int)v.shape.size();i++){
+                if(this->shape[i]->eval(ctx) >= v.shape[i]){
+                    throw std::runtime_error(this->name.name+"数组大小超出范围");
+                }
+            }*/
+            irOP dest = "%"+std::to_string(ctx.get_id());
+            irOP index = "%"+std::to_string(ctx.get_id());
+            irOP size = "%"+std::to_string(ctx.get_id());
+            ir.emplace_back(ir::irCODE::SAL,index,
+                this->shape[this->shape.size()-1]->eval_run(ctx,ir),2);//乘以4
+            if(this->shape.size()!=1){
+                irOP temp = "%"+std::to_string(ctx.get_id());
+                ir.emplace_back(ir::irCODE::MOV,size,4*v.shape[this->shape.size()-1]);
+            }
+            for(int i = this->shape.size()-2;i>=0;i--){
+                irOP tmp = "%"+std::to_string(ctx.get_id());
+                irOP tmp2 = "%"+std::to_string(ctx.get_id());
+                ir.emplace_back(ir::irCODE::MUL,tmp,size,this->shape[i]->eval_run(ctx,ir));
+                ir.emplace_back(ir::irCODE::ADD,tmp2,index,tmp);
+                index = tmp2;
+                if(i!=0){
+                    irOP tmp = "%"+std::to_string(ctx.get_id());
+                    ir.emplace_back(ir::irCODE::MUL,tmp,size,v.shape[i]);
+                    size = tmp;
+                }
+            }
+            ir.emplace_back(ir::irCODE::LOAD,dest,v.name,index);
+            return dest;
+        }
+        else 
+        {
+            std::runtime_error("数组维度不匹配");
+        }
+    }
+    else 
+    {
+        std::runtime_error(this->name.name+":不是数组");
+    }
+}
 
 /*
 控制流实现部分

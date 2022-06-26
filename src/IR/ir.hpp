@@ -63,8 +63,9 @@ enum class irCODE{
     LABEL,              //label
     PHI_MOVE,           //判断赋值
     SAL,                //左移
-    STORE,              //op1[op2]=op3
-    DATA_SPACE,         //全局变量数组大小4的倍数
+    STORE,              //从寄存器保存到内存
+    LOAD,               //从内存加载到寄存器
+    DATA_SPACE,         //全局变量开辟空间占位子
     MALLOC_IN_STACK,    //为临时数组分配空间 name size
 };
 //IR,中间语言定义

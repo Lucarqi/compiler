@@ -70,7 +70,6 @@ void yyerror(const char* s)
     sysy::ast::node::AssignStmt* assignstmt;
     sysy::ast::node::IfStmt* ifstmt;
     sysy::ast::node::ConditionExpr* condexpr;
-
 }
 
 %token <string> INT_VALUE "integer" IDENTIFIER "identifier"
