@@ -94,7 +94,7 @@ void Context::end_scope()
 bool Context::is_global(){
     return symbol_table.size()==1 && const_table.size()==1;
 }
-
+//判断当前是否在while循环当中
 bool Context::in_loop(){
     return !loop_label.empty();
 }

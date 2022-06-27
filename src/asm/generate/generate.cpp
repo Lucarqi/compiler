@@ -81,6 +81,8 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 string dest = ctx.load_reg(ir.dest,out);
                 string op1 = ctx.load_reg(ir.op1,out);
                 out<<"      MOV  "+dest+",  "+op1<<endl;
+                //全局变量的保存
+                if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
             }
         }
         else if(ir.ircode==ir::irCODE::SET_ARG)

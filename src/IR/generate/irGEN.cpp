@@ -36,7 +36,7 @@ void Root::irGEN(ir::Context& ctx,IRList& ir)
 void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
 {
     try{
-        //检查当前作用域定义过吗
+        //检查当前作用域定义过吗，检查重复定义
         auto& find = ctx.find_symbol(this->name.name,true);
         std::cerr<<find.name<<std::endl;
     }
@@ -59,8 +59,9 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
         }
         else
         {
+            //全新的局部变量，插入符号表(标识符，VarInfo信息)，直接定义虚拟寄存器
             ctx.insert_symbol(this->name.name,VarInfo("%"+std::to_string(ctx.get_id())));
-            //使用Assignment语句创建
+            //使用Assignment语句创建，此时一定能够在符号表中查得到
             AssignStmt assign(this->name,this->value);
             assign.line = this->line;
             assign.column = this->column;
@@ -95,6 +96,7 @@ void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
         }
         else 
         {
+            //定义未初始化局部变量，插入符号表，但是不使用Assignment进行赋值
             ctx.insert_symbol(this->name.name,VarInfo("%"+std::to_string(ctx.get_id())));
         }
         return;
@@ -141,18 +143,7 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
     }
     //处理block
     this->body.generate_ir(ctx,ir);
-    /*
-    //处理return
-    if(this->return_type == INT)
-    {
-        ir.emplace_back(irCODE::RET,irOP(0));
-    }
-    else //返回类型为void
-    {
-        ir.emplace_back(irCODE::RET);
-        
-    }
-    */
+
     ir.emplace_back(irCODE::FUNCTION_END,this->name.name);
     //添加函数进入函数信息表
     ctx.insert_function(this->name.name, FuncInfo(this->return_type, arg_len, list));
@@ -197,7 +188,7 @@ void VoidStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
 
 /*
 赋值语句，需要判断lname定义
-添加数组支持
+数组赋值在store_runtime里面
 */
 void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
 {
@@ -222,6 +213,7 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
             if (rh.is_var() && rh.name[0] == '%' &&
             (lh.name[0] == '%' || lh.name.substr(0, 4) == "$arg") &&
             lh.name[0] != '@') {
+                //两个全局变量在循环当中
                 if (ctx.in_loop()) {
                     bool lhs_is_loop_var = false, rhs_is_loop_vae = false;
                     //int lhs_level = -1, rhs_level = -1;
@@ -237,15 +229,18 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
                         lh.name = rh.name;
                     }
                 } 
+                //局部变量间赋值，直接赋值虚拟寄存器，不产生新的虚拟寄存器
                 else {
                     lh.name = rh.name;
                 }
             } 
             else if (lh.name[0] == '@') {
+                //全局变量直接虚拟寄存器赋值
                 ir.emplace_back(irCODE::MOV, lh.name, rh);
             } 
             else 
             {
+                //非局部变量赋值，更新变量的虚拟寄存器号，保证SSA赋值
                 lh.name = "%" + std::to_string(ctx.get_id());
                 ir.emplace_back(irCODE::MOV, lh.name, rh);
             }
@@ -271,12 +266,17 @@ void ValueExpr::irGEN(ir::Context& ctx,ir::IRList& ir){
     this->eval_run(ctx,ir);
 }
 
-//IfStmt
+/*
+IfStmt的实现，分为cond和thenod和elsedo两个部分
+cond部分：实现短路求值，需要短路求值时插入phi_move
+thenod和elsedo部分：对其引用前一个作用域的变量在其末尾位置设置phi_move
+*/
 void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
     ctx.create_scope();
     std::string id = std::to_string(ctx.get_id());
     //判断语句模块
     auto ret = this->cond.eval_cond_run(ctx,ir);
+    //直接跳转
     if(ret.thenop == ir::irCODE::JMP)
     {
         this->thenstmt.generate_ir(ctx,ir);
@@ -287,8 +287,14 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
         this->elsestmt.generate_ir(ctx,ir);
         return;
     }
+    //cond结束，根据elseop跳转到IF_X_ELSE位置
     ir.emplace_back(ret.elseop, "IF_"+id+"_ELSE");
-    //先分别生成thenstmt和elsestmt的各种临时变量和ir语句
+    /*
+    先分别生成thenstmt和elsestmt的各种临时变量和ir语句。
+    注意这里需要创建作用域并且退出，当需要临时变量时，在其内部作用域创建好，再退出。
+    而当需要对当前作用域变量赋值时，会将当前符号表的变量VarInfo中的虚拟寄存器改变，参见Assignment
+    语句的赋值，采用的是& lname引用。
+    */
     ir::IRList thenlist,elselist;
     ir::Context then_ctx = ctx, else_ctx = ctx;
     then_ctx.create_scope();
@@ -309,9 +315,10 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
         for(auto &s : then_ctx.symbol_table[i])
         {
             /*
-            实现：then_ctx = ctx且有新的，else_ctx = ctx且有新的
-            then_ctx临时寄存器 = else_ctx临时寄存器时，只有then且elsestmt中都没有对main()中变量的引用。
-            只要thenstmt或者elsestmt对main()中变量有引用，都要加phi_move 
+            实现：当在then_do和else_do中对前一个作用域变量赋值是，会改变其VarInfo即虚拟寄存器，而then_do和else_do
+            改变的不一样(因为then_ctx.id = ctx.id，而else_ctx.id = then_ctx.id)，
+            检查全部作用域，只要变量名称相同，而虚拟寄存器不同，即可认为发生了赋值，需要使用phi_move到新的同一个寄存器，
+            并改变变量的寄存器值。
             */
            if(s.second.name!= else_ctx.symbol_table[i].find(s.first)->second.name)
            {
@@ -327,10 +334,11 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
            }
         }
     }
-    //连接修改的then和else
+    //连接then_do生成的ir
     ir.splice(ir.end(),thenlist);
-    //elsestmt不是空的，添加JMP语句
+    //elsestmt不是空的，在then_do末尾添加JMP语句
     if(!elselist.empty()) ir.emplace_back(irCODE::JMP,"IF_"+id+"_END");
+    //进入else_do的标签
     ir.emplace_back(irCODE::LABEL,"IF_"+id+"_ELSE");
     ir.splice(ir.end(),elselist);
     ir.splice(ir.end(),end);
@@ -346,7 +354,7 @@ void ContinueStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
             irOP(
                 ctx.symbol_table[i.first.first].find(i.first.second)->second.name));
     }
-    ir.emplace_back(irCODE::JMP, ".L.LOOP_" + ctx.loop_label.top() + "_CONTINUE");
+    ir.emplace_back(irCODE::JMP, "LOOP_" + ctx.loop_label.top() + "_CONTINUE");
 }
 //break语句生成
 void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
@@ -357,9 +365,12 @@ void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
             irOP(
                 ctx.symbol_table[i.first.first].find(i.first.second)->second.name));
     }
-    ir.emplace_back(irCODE::JMP, ".L.LOOP_" + ctx.loop_label.top() + "_END");
+    ir.emplace_back(irCODE::JMP, "LOOP_" + ctx.loop_label.top() + "_END");
 }
 
+/*
+while语句实现
+*/
 void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx.create_scope();
     ctx.loop_label.push(std::to_string(ctx.get_id()));
@@ -391,12 +402,12 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     Context ctx_cond = ctx_before;
     IRList ir_cond;
     ir_cond.emplace_back(irCODE::LABEL,
-                        ".L.LOOP_" + ctx.loop_label.top() + "_BEGIN");
+                        "LOOP_" + ctx.loop_label.top() + "_BEGIN");
     auto cond = this->cond.eval_cond_run(ctx_cond, ir_cond);
 
     // JMP
     IRList ir_jmp;
-    ir_jmp.emplace_back(cond.elseop, ".L.LOOP_" + ctx.loop_label.top() + "_END");
+    ir_jmp.emplace_back(cond.elseop, "LOOP_" + ctx.loop_label.top() + "_END");
 
     //先生成一个symbol表，记录所有的信息
     // DO (fake)
@@ -450,7 +461,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
         }
         }
     }
-    ir_do.emplace_back(irCODE::LABEL, ".L.LOOP_" + ctx.loop_label.top() + "_DO");
+    ir_do.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_DO");
     //再生成一遍一样的的ctx_do,ir_do
     this->stmt.generate_ir(ctx_do, ir_do);
     //根据phi_move中保存的信息，在ir_do添加phi_move指令
@@ -479,12 +490,12 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     // CONTINUE
     Context ctx_continue = ctx_do;
     IRList ir_continue;
-    ir_continue.emplace_back(irCODE::PHI_MOVE,
-                            ".L.LOOP_" + ctx.loop_label.top() + "_CONTINUE");
+    ir_continue.emplace_back(irCODE::LABEL,
+                            "LOOP_" + ctx.loop_label.top() + "_CONTINUE");
 
     ir_cond.clear();
-    ir_cond.emplace_back(irCODE::PHI_MOVE,
-                        ".L.LOOP_" + ctx.loop_label.top() + "_BEGIN");
+    ir_cond.emplace_back(irCODE::LABEL,
+                        "LOOP_" + ctx.loop_label.top() + "_BEGIN");
 
     for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) {
         for (const auto& symbol_before : ctx_before.symbol_table[i]) {
@@ -504,9 +515,9 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
         }
     }
     ir_continue.emplace_back(irCODE::JMP,
-                            ".L.LOOP_" + ctx.loop_label.top() + "_BEGIN");
+                            "LOOP" + ctx.loop_label.top() + "_BEGIN");
     ir_continue.emplace_back(irCODE::LABEL,
-                            ".L.LOOP_" + ctx.loop_label.top() + "_END");
+                            "LOOP" + ctx.loop_label.top() + "_END");
 
     //////////////////////////////////////////////////////////////////////
 
@@ -517,7 +528,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
 
     // JMP real
     ir_jmp.clear();
-    ir_jmp.emplace_back(cond.elseop, ".L.LOOP_" + ctx.loop_label.top() + "_END");
+    ir_jmp.emplace_back(cond.elseop, "LOOP" + ctx.loop_label.top() + "_END");
 
     // DO (fake) real
     ctx_do_fake = ctx_cond;
@@ -536,7 +547,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ir_continue.clear();
     //ir_continue.emplace_back(OpCode::NOOP);
     IRList end;
-    end.emplace_back(irCODE::LABEL, ".L.LOOP_" + ctx.loop_label.top() + "_END");
+    end.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_END");
     ctx_do.loop_continue_symbol_snapshot.push({});
     ctx_do.loop_break_symbol_snapshot.push({});
     ctx_do.loop_continue_phi_move.push({});
@@ -571,7 +582,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
         }
         }
     }
-    ir_do.emplace_back(irCODE::LABEL, ".L.LOOP_" + ctx.loop_label.top() + "_DO");
+    ir_do.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_DO");
     this->stmt.generate_ir(ctx_do, ir_do);
     for (auto& i : ctx_do.loop_continue_phi_move.top()) {
         ir_do.emplace_back(irCODE::PHI_MOVE, i.second,
@@ -598,7 +609,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     // CONTINUE real
     ctx_continue = ctx_do;
     ir_continue.emplace_back(irCODE::LABEL,
-                            ".L.LOOP_" + ctx.loop_label.top() + "_CONTINUE");
+                            "LOOP_" + ctx.loop_label.top() + "_CONTINUE");
     for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) {
         for (const auto& symbol_before : ctx_before.symbol_table[i]) {
         const auto& symbo_continue =
@@ -611,7 +622,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
         }
     }
     ir_continue.emplace_back(irCODE::JMP,
-                            ".L.LOOP_" + ctx.loop_label.top() + "_BEGIN");
+                            "LOOP_" + ctx.loop_label.top() + "_BEGIN");
     //连接ir
     ctx = ctx_cond;
     ctx.id = ctx_continue.id;

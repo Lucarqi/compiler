@@ -12,7 +12,7 @@ namespace sysy::ir{
 //变量信息
 class VarInfo{
 public:
-    //寄存器名称
+    //虚拟寄存器名称
     std::string name;
     //是不是数组
     bool is_array;

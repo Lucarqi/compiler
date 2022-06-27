@@ -5,7 +5,7 @@
 
 using namespace sysy::ir;
 /*
-所有的_eval实现，直接求值，编译器优化部分
+所有的_eval实现，编译期间直接求值
 */
 namespace sysy{
 //Expression
