@@ -16,6 +16,8 @@ extern FILE* inputfile;
 extern std::ostream* output;
 //输入文件名字
 extern std::string filename;
+//优化标志
+extern int optimize_level;
 //具体实现
 void parser_arg(int arg, char** argv);
 }

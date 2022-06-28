@@ -116,12 +116,21 @@ int ast::node::ArrayIdentifier::_eval(ir::Context& ctx){
 }
 //常量直接求值
 int ast::node::Identifier::_eval(ir::Context& ctx){
-    auto v = ctx.find_const(this->name);
-    if (v.is_array) {
-        throw std::runtime_error(this->name + " is a array.");
-    } 
-    else {
-        return v.value.front();
+    try
+    {
+        auto v = ctx.find_const(this->name);
+        if (v.is_array) {
+            throw std::runtime_error(this->name + " is a array.");
+        } 
+        else {
+            return v.value.front();
+        }
+    }
+    catch(const std::exception& e)
+    {
+        if(config::optimize_level>0){
+            return ctx.find_const_assign(ctx.find_symbol(this->name).name).value[0];
+        }
     }
 }//编译期间求值
 int ast::node::AfterInc::_eval(ir::Context& ctx){
@@ -129,22 +138,26 @@ int ast::node::AfterInc::_eval(ir::Context& ctx){
         throw std::runtime_error("只有局部变量可以a++直接求值");
     }
     auto val = this->lname.eval(ctx);
-    auto v = ctx.find_symbol(this->lname.name);
+    auto& v = ctx.find_symbol(this->lname.name);
     if(v.name[0]!='%'||v.is_array){
         throw std::runtime_error("只有局部变量可以a++直接求值");
     }
-    int value = this->op==PLUS?val + 1:val - 1;
-    return value;
+    v.name = "%"+std::to_string(ctx.get_id());
+    int new_value = this->op==PLUS?val + 1:val - 1;
+    ctx.insert_const_assign(v.name,new_value);
+    return val;
 }
 int ast::node::AssignStmt::_eval(ir::Context& ctx){
     if(dynamic_cast<ast::node::ArrayIdentifier*>(&this->lname)!=nullptr){
         throw std::runtime_error("只有局部变量可以直接求值");
     }
     auto val = this->rexpr.eval(ctx);
-    auto v = ctx.find_symbol(this->lname.name);
+    auto& v = ctx.find_symbol(this->lname.name);
     if(v.name[0]!='%'||v.is_array){
         throw std::runtime_error("只有局部变量可以直接求值");
     }
+    v.name = "%"+std::to_string(ctx.get_id());
+    ctx.insert_const_assign(v.name,val);
     return val;
 }
 
@@ -169,19 +182,59 @@ ir::irOP ast::node::Number::_eval_run(ir::Context& ctx,ir::IRList& ir)
 ir::irOP ast::node::Identifier::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     auto find = ctx.find_symbol(this->name);
-    irOP dest = find.name;
-    return dest;
+    if(find.is_array){
+        return find.name;
+    }else {
+        if(config::optimize_level > 0){
+            try{
+                return ctx.find_const_assign(find.name).value[0];
+            }catch(...)
+            {  }
+        }
+    return find.name;
+    }
+}
+//算给定a的log2的值
+namespace{
+int log2(int a){
+int count = -1;
+while(a>0){
+count++;
+a /= 2;
+}
+return count;
+}
 }
 
 //二元运算的IR构建，含虚拟寄存器
 ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
+    //直接返回编译期间立即数的运算结果
+    if(config::optimize_level > 0){
+        try{
+            return this->eval(ctx);
+        }catch(...){
+        }
+    }
     ir::irOP dest="%"+std::to_string(ctx.get_id()), lh,rh;
     if(this->op!=AND && this->op!=OR)
     {
-        //立即数或者虚拟寄存器irOP
+        if(config::optimize_level > 0){
+        try{
+            lh = this->eval(ctx);
+        }catch(...){
+            lh = this->eval_run(ctx,ir);
+        }
+        try{
+            rh = this->eval(ctx);
+        }catch(...){
+            rh = this->eval_run(ctx,ir);
+        }
+        }
+        else {
         lh = this->lh.eval_run(ctx,ir);
         rh = this->rh.eval_run(ctx,ir);
+        }
     }
     //首先实现加减乘除
     switch(this->op){
@@ -192,13 +245,31 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             ir.emplace_back(irCODE::SUB,dest,lh,rh);
             break;
         case MUL:
+            if(config::optimize_level > 0){
+                if(lh.is_imm()&&(1<<log2(lh.value))==lh.value){
+                    ir.emplace_back(irCODE::SAL,dest,rh,log2(lh.value));
+                    break;
+                }
+                if(rh.is_imm()&&(1<<log2(rh.value))==rh.value){
+                    ir.emplace_back(irCODE::SAL,dest,lh,log2(rh.value));
+                    break;
+                }
+            }
             ir.emplace_back(irCODE::MUL,dest,lh,rh);
             break;
         case DIV:
             ir.emplace_back(irCODE::DIV,dest,lh,rh);
             break;
         case MOD:
-            ir.emplace_back(irCODE::MOD,dest,lh,rh);
+            if(config::optimize_level > 0&&rh.is_imm()){
+                irOP tmp1="%"+std::to_string(ctx.get_id());
+                irOP tmp2="%"+std::to_string(ctx.get_id());
+                //首先计算整除数据，再乘起来，最后再减去得到余数
+                ir.emplace_back(irCODE::DIV,tmp1,lh,rh);
+                ir.emplace_back(irCODE::MUL,tmp2,tmp1,rh);
+                ir.emplace_back(irCODE::SUB,dest,lh,tmp2);
+            }
+            else ir.emplace_back(irCODE::MOD,dest,lh,rh);
             break;
         // 实现条件判断
         case EQ:
@@ -277,6 +348,12 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 //一元表达式生成IR，返回dest寄存器
 ir::irOP ast::node::UnaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
+    if(config::optimize_level > 0){
+        try{
+            return this->eval(ctx);
+        }catch(...){
+        }
+    }
     irOP dest = "%"+std::to_string(ctx.get_id());
     //先实现取正和取负
     switch(this->op){
@@ -310,8 +387,13 @@ ir::irOP ast::node::AssignStmt::_eval_run(ir::Context& ctx,ir::IRList& ir)
 {
     //生成IR
     this->irGEN(ctx,ir);
-    //返回dest
-    return ir.back().dest;
+    if(dynamic_cast<ast::node::ArrayIdentifier*>(&this->lname)){
+        assert(ir.back().ircode==ir::irCODE::STORE);
+        return ir.back().op3;
+    }else {
+        assert(ir.back().dest.is_var());
+        return ir.back().dest;
+    }
 }
 //AfterInc:a++ 翻译为return a ,then: a=a+1
 ir::irOP ast::node::AfterInc::_eval_run(ir::Context& ctx,ir::IRList& ir)
@@ -339,7 +421,6 @@ ir::irOP ast::node::ValueExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
 
 //函数调用
 ir::irOP ast::node::FunctionCall::_eval_run(ir::Context& ctx,ir::IRList& ir){
-    /*先不使用判断find_func*/
     std::vector<ir::irOP> list;
     //遍历参数列表
     for(int i = 0; i < (int)this->args.args.size() ; ++i)
@@ -371,13 +452,19 @@ ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){
     {
         //作为右值载入，一定存在
         if(this->shape.size() == v.shape.size()){
-            /*判断维度大小，这里不好判断数组维度大小
-            for(int i=0;i < (int)v.shape.size();i++){
-                if(this->shape[i]->eval(ctx) >= v.shape[i]){
-                    throw std::runtime_error(this->name.name+"数组大小超出范围");
-                }
-            }*/
             irOP dest = "%"+std::to_string(ctx.get_id());
+            if(config::optimize_level > 0){
+                try{
+                    int index=0,size=4;
+                    for(int i=this->shape.size()-1;i>=0;i--){
+                    index += this->shape[i]->eval(ctx)*size;
+                    size *= v.shape[i];
+                    }
+                    ir.emplace_back(ir::irCODE::LOAD,dest,v.name,index);
+                    return dest;
+                }catch(...){
+                }
+            }
             irOP index = "%"+std::to_string(ctx.get_id());
             irOP size = "%"+std::to_string(ctx.get_id());
             ir.emplace_back(ir::irCODE::SAL,index,
@@ -435,8 +522,21 @@ ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Cont
     ir::irOP lh,rh;
     if(this->op!=AND && this->op!=OR)
     {
-        lh = this->lh.eval_run(ctx,ir);
-        rh = this->rh.eval_run(ctx,ir);
+        if(config::optimize_level > 0){
+            try{
+                lh = this->lh.eval(ctx);
+            }catch(...){
+                lh = this->lh.eval_run(ctx,ir);
+            }
+            try{
+                rh = this->rh.eval(ctx);
+            }catch(...){
+                rh = this->rh.eval_run(ctx,ir);
+            }
+        }else {
+            lh = this->lh.eval_run(ctx,ir);
+            rh = this->rh.eval_run(ctx,ir);
+        }
     }
     switch(this->op)
     {

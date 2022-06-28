@@ -3,7 +3,7 @@
 #include "config.hpp"
 
 namespace sysy::config{
-
+int optimize_level=0;
 FILE* inputfile = stdin;
 std::ostream* output = &std::cout;
 bool print_ast = false;
@@ -18,6 +18,8 @@ void parser_arg(int arg, char** argv)
         if(argv[i][0] == '-')
         {
             if(argv[i] == std::string("-o")) s=1;//-o outfilename
+            else if(argv[i] == std::string("-O1"))
+                optimize_level = 1;
             else if(argv[i] == std::string("-print_ast")) print_ast=true;
             else if(argv[i] == std::string("-print_ir")) print_ir=true;
         }

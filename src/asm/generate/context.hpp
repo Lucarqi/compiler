@@ -27,7 +27,7 @@ Context(ir::IRList* irs,ir::IRList::iterator function_begin,std::ostream& out);
 std::unordered_map<ir::IR*,int> ir_in_time;
 //记录每个变量的时间戳timestamp
 std::unordered_map<std::string ,int> var_define_time;
-        //该时间上有多个变量要使用
+//该时间上有多个变量要使用
 std::multimap<int , std::string> var_define_time_heap;
 //记录每个变量最后使用的时间戳
 std::unordered_map<std::string ,int> var_lastused_time;

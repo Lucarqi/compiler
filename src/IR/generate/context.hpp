@@ -52,11 +52,13 @@ public:
     using ConstTable = std::vector<std::unordered_map<std::string , ConstInfo>>;
     SymbolTable symbol_table={{}};
     ConstTable const_table={{}};
+    ConstTable const_assign_table={{}};
     //添加进入符号表
     void insert_symbol(std::string name,VarInfo value);
     //添加进入常量表
     void insert_const(std::string name,ConstInfo value);
-
+    //添加进入常量赋值表
+    void insert_const_assign(std::string name,ConstInfo value);
     /*
     对符号表和常量表的查找
     true在当前作用域查找
@@ -64,7 +66,7 @@ public:
     */
     VarInfo& find_symbol(std::string name,bool top=false);
     ConstInfo& find_const(std::string name,bool top=false);
-
+    ConstInfo& find_const_assign(std::string name);
     //创建当前作用域
     void create_scope();
     //退出当前作用域

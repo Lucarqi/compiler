@@ -77,7 +77,7 @@ void VarDeclWithInitVal::irGEN(ir::Context& ctx,IRList& ir)
     throw error::RedefineVar();
 }
 
-//变量的声明
+//变量的声明，加入重复声明判断
 void VarDecl::irGEN(ir::Context& ctx,ir::IRList& ir)
 {
     try
@@ -138,12 +138,11 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
             std::string arg_re = "%"+std::to_string(ctx.get_id());
             ir.emplace_back(irCODE::MOV,irOP(arg_re),irOP("$arg"+std::to_string(i)));
             ctx.insert_symbol(args.list[i]->name.name,VarInfo(arg_re)); 
-            //list.emplace(list.end(),1);
+            list.emplace(list.end(),1);
         }
     }
     //处理block
     this->body.generate_ir(ctx,ir);
-
     ir.emplace_back(irCODE::FUNCTION_END,this->name.name);
     //添加函数进入函数信息表
     ctx.insert_function(this->name.name, FuncInfo(this->return_type, arg_len, list));
@@ -154,7 +153,6 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
 //block
 void Block::irGEN(ir::Context& ctx,IRList& ir)
 {
-    //注意此时函数和Block都定义了作用域，即参数在函数定义域不在block中，有可能出现 bug
     ctx.create_scope();
     for(auto i:this->Stmts)
     {
@@ -195,13 +193,12 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
     //判断是否是数组
     if(dynamic_cast<ArrayIdentifier*>(&this->lname))
     {
-        //计算右式值
         auto rhs = this->rexpr.eval_run(ctx,ir);
+        //使用store_runtime存储数组
         dynamic_cast<ArrayIdentifier*>(&this->lname)->store_runtime(rhs,ctx,ir);
     }
     else 
     {
-        //UndefindError 交给generate_ir处理
         auto& lh = ctx.find_symbol(this->lname.name);
         auto rh = this->rexpr.eval_run(ctx,ir);
         if(lh.is_array)
@@ -216,7 +213,6 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
                 //两个局部变量在循环当中
                 if (ctx.in_loop()) {
                     bool lhs_is_loop_var = false, rhs_is_loop_vae = false;
-                    //int lhs_level = -1, rhs_level = -1;
                     for (const auto& i : ctx.loop_var.top()) {
                         if (i == lh.name) lhs_is_loop_var = true;
                         if (i == rh.name) rhs_is_loop_vae = true;

@@ -24,7 +24,9 @@ void Context::insert_symbol(std::string name,VarInfo value){
 void Context::insert_const(std::string name,ConstInfo value){
     const_table.back().insert({name,value});
 }
-
+void Context::insert_const_assign(std::string name,ConstInfo value){
+    const_assign_table.back().insert({name,value});
+}
 //添加函数信息
 void Context::insert_function(std::string name , FuncInfo func)
 {
@@ -70,7 +72,13 @@ ConstInfo& Context::find_const(std::string name,bool top)
     //没找到
     throw error::UndefineVar();
 }
-
+ConstInfo& Context::find_const_assign(std::string name){
+    for(int i = const_assign_table.size() - 1;i>=0;i--){
+        auto find = const_assign_table[i].find(name);
+        if(find != const_assign_table[i].end()) return find->second;
+    }
+    throw std::out_of_range("No such const:"+name);
+}
 //查找函数信息
 FuncInfo& Context::find_func(std::string name)
 {
