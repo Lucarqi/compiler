@@ -169,7 +169,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 out<<"      SUB  "+dest+",  r14"+",  "+op2<<endl;
             }
             else {
-                out<<"      SUB  "+dest+", "+op1+", "+op2<<endl;
+                out<<"      SUB  "+dest+",  "+op1+",  "+op2<<endl;
             }  
             
             if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);

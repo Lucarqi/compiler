@@ -213,7 +213,7 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
             if (rh.is_var() && rh.name[0] == '%' &&
             (lh.name[0] == '%' || lh.name.substr(0, 4) == "$arg") &&
             lh.name[0] != '@') {
-                //两个全局变量在循环当中
+                //两个局部变量在循环当中
                 if (ctx.in_loop()) {
                     bool lhs_is_loop_var = false, rhs_is_loop_vae = false;
                     //int lhs_level = -1, rhs_level = -1;
@@ -334,6 +334,19 @@ void IfStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
            }
         }
     }
+    //当处于循环当中时，循环体内if_else的信息插入
+    if (!ctx.loop_break_symbol_snapshot.empty()) {
+        auto& br = ctx.loop_break_symbol_snapshot.top();
+        auto& then_br = then_ctx.loop_break_symbol_snapshot.top();
+        auto& else_br = else_ctx.loop_break_symbol_snapshot.top();
+        br.insert(br.end(), then_br.begin(), then_br.end());
+        br.insert(br.end(), else_br.begin(), else_br.end());
+        auto& co = ctx.loop_continue_symbol_snapshot.top();
+        auto& then_co = then_ctx.loop_continue_symbol_snapshot.top();
+        auto& else_co = else_ctx.loop_continue_symbol_snapshot.top();
+        co.insert(co.end(), then_co.begin(), then_co.end());
+        co.insert(co.end(), else_co.begin(), else_co.end());  
+    }
     //连接then_do生成的ir
     ir.splice(ir.end(),thenlist);
     //elsestmt不是空的，在then_do末尾添加JMP语句
@@ -369,10 +382,12 @@ void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
 }
 
 /*
-while语句实现
+while语句实现，与IfStmt类似
+cond部分
 */
 void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx.create_scope();
+    //进入首先添加循环的标识数字
     ctx.loop_label.push(std::to_string(ctx.get_id()));
     ctx.loop_var.push({});
 
@@ -392,13 +407,13 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
         END:│           │
             └───────────┘
     */
-    // 在 `jne END`、`break;`、`continue`前均需要插入 PHI_MOV
+    // 在 `jeq END`、`break;`、`continue`前均需要插入 PHI_MOV
 
     // BRFORE
     Context ctx_before = ctx;
     IRList ir_before;
 
-    // COND
+    // COND，包含在while循环当中与IfStmt形式上有所不用
     Context ctx_cond = ctx_before;
     IRList ir_cond;
     ir_cond.emplace_back(irCODE::LABEL,
@@ -409,8 +424,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     IRList ir_jmp;
     ir_jmp.emplace_back(cond.elseop, "LOOP_" + ctx.loop_label.top() + "_END");
 
-    //先生成一个symbol表，记录所有的信息
-    // DO (fake)
+    // DO (fake)，先生成一遍记录所有变量信息
     Context ctx_do_fake = ctx_cond;
     IRList ir_do_fake;
     ctx_do_fake.loop_continue_symbol_snapshot.push({});
@@ -429,38 +443,43 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx_do.loop_break_symbol_snapshot.push({});
     ctx_do.loop_continue_phi_move.push({});
     ctx_do.loop_break_phi_move.push({});
-    //保存受影响的main()中的变量
-    for (int i = 0; i < (int)ctx_do_fake.symbol_table.size(); i++) {
-        for (auto& symbol : ctx_do_fake.symbol_table[i]) {
-        for (int j = 0;
-            j < (int)ctx_do_fake.loop_continue_symbol_snapshot.top().size(); j++) {
-            if (symbol.second.name !=
-                ctx_do_fake.loop_continue_symbol_snapshot.top()[j][i]
-                    .find(symbol.first)
-                    ->second.name) {
-            ctx_do.loop_continue_phi_move.top().insert(
-                {{i, symbol.first}, "%" + std::to_string(ctx_do.get_id())});
-            break;
+    //保存受影响的main()中的变量，到phi_move表中
+    for (int i = 0; i < (int)ctx_do_fake.symbol_table.size(); i++) 
+    {
+        for (auto& symbol : ctx_do_fake.symbol_table[i]) 
+        {
+            for (int j = 0;j < (int)ctx_do_fake.loop_continue_symbol_snapshot.top().size(); j++) 
+            {
+                if (symbol.second.name !=
+                        ctx_do_fake.loop_continue_symbol_snapshot.top()[j][i]
+                        .find(symbol.first)->second.name) 
+                {
+                    ctx_do.loop_continue_phi_move.top().insert(
+                        {{i, symbol.first}, "%" + std::to_string(ctx_do.get_id())});
+                    break;
+                }
             }
         }
-        }
     }
-    //类似，目前不清楚?
-    for (int i = 0; i < (int)ctx_cond.symbol_table.size(); i++) {
-        for (auto& symbol : ctx_cond.symbol_table[i]) {
-        for (int j = 0; j < (int)ctx_do_fake.loop_break_symbol_snapshot.top().size();
-            j++) {
-            const auto do_name = ctx_do_fake.loop_break_symbol_snapshot.top()[j][i]
-                                    .find(symbol.first)
-                                    ->second.name;
-            if (symbol.second.name != do_name) {
-            ctx_do.loop_break_phi_move.top().insert(
-                {{i, symbol.first}, symbol.second.name});
-            break;
+    //
+    for (int i = 0; i < (int)ctx_cond.symbol_table.size(); i++) 
+    {
+        for (auto& symbol : ctx_cond.symbol_table[i]) 
+        {
+            for (int j = 0; j < (int)ctx_do_fake.loop_break_symbol_snapshot.top().size();j++) 
+            {
+                const auto do_name = ctx_do_fake.loop_break_symbol_snapshot.top()[j][i]
+                                        .find(symbol.first)->second.name;
+                if (symbol.second.name != do_name) 
+                {
+                    ctx_do.loop_break_phi_move.top().insert(
+                        {{i, symbol.first}, symbol.second.name});
+                    break;
+                }
             }
         }
-        }
     }
+    //DO模块添加循环标志
     ir_do.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_DO");
     //再生成一遍一样的的ctx_do,ir_do
     this->stmt.generate_ir(ctx_do, ir_do);
@@ -490,6 +509,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     // CONTINUE
     Context ctx_continue = ctx_do;
     IRList ir_continue;
+    // Continue模块的入口标识
     ir_continue.emplace_back(irCODE::LABEL,
                             "LOOP_" + ctx.loop_label.top() + "_CONTINUE");
 
@@ -497,38 +517,40 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ir_cond.emplace_back(irCODE::LABEL,
                         "LOOP_" + ctx.loop_label.top() + "_BEGIN");
 
-    for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) {
-        for (const auto& symbol_before : ctx_before.symbol_table[i]) {
-        const auto& symbo_continue =
-            *ctx_continue.symbol_table[i].find(symbol_before.first);
-        if (symbol_before.second.name != symbo_continue.second.name) {
-            const std::string new_name = "%" + std::to_string(ctx_before.get_id());
-            ir_before.emplace_back(irCODE::PHI_MOVE, new_name,
-                                irOP(symbol_before.second.name));
-            ir_before.back().phi_block = ir_cond.begin();
-            ir_continue.emplace_back(irCODE::PHI_MOVE, new_name,
-                                    irOP(symbo_continue.second.name));
-            ctx_before.symbol_table[i].find(symbol_before.first)->second.name =
-                new_name;
-            ctx_before.loop_var.top().push_back(new_name);
-        }
+    for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) 
+    {
+        for (const auto& symbol_before : ctx_before.symbol_table[i]) 
+        {
+            const auto& symbo_continue =
+                *ctx_continue.symbol_table[i].find(symbol_before.first);
+            if (symbol_before.second.name != symbo_continue.second.name) 
+            {
+                const std::string new_name = "%" + std::to_string(ctx_before.get_id());
+                ir_before.emplace_back(irCODE::PHI_MOVE, new_name,
+                                    irOP(symbol_before.second.name));
+                ir_before.back().phi_block = ir_cond.begin();
+                ir_continue.emplace_back(irCODE::PHI_MOVE, new_name,
+                                        irOP(symbo_continue.second.name));
+                ctx_before.symbol_table[i].find(symbol_before.first)->second.name =
+                    new_name;
+                ctx_before.loop_var.top().push_back(new_name);
+            }
         }
     }
     ir_continue.emplace_back(irCODE::JMP,
-                            "LOOP" + ctx.loop_label.top() + "_BEGIN");
+                            "LOOP_" + ctx.loop_label.top() + "_BEGIN");
     ir_continue.emplace_back(irCODE::LABEL,
-                            "LOOP" + ctx.loop_label.top() + "_END");
+                            "LOOP_" + ctx.loop_label.top() + "_END");
 
     //////////////////////////////////////////////////////////////////////
 
-    //前面是准备，保存各种phi_move，生成符号等
     // COND real
     ctx_cond = ctx_before;
     cond = this->cond.eval_cond_run(ctx_cond, ir_cond);
 
     // JMP real
     ir_jmp.clear();
-    ir_jmp.emplace_back(cond.elseop, "LOOP" + ctx.loop_label.top() + "_END");
+    ir_jmp.emplace_back(cond.elseop, "LOOP_" + ctx.loop_label.top() + "_END");
 
     // DO (fake) real
     ctx_do_fake = ctx_cond;
@@ -545,50 +567,56 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx_do = ctx_cond;
     ir_do.clear();
     ir_continue.clear();
-    //ir_continue.emplace_back(OpCode::NOOP);
     IRList end;
     end.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_END");
     ctx_do.loop_continue_symbol_snapshot.push({});
     ctx_do.loop_break_symbol_snapshot.push({});
     ctx_do.loop_continue_phi_move.push({});
     ctx_do.loop_break_phi_move.push({});
-    for (int i = 0; i < (int)ctx_do_fake.symbol_table.size(); i++) {
-        for (auto& symbol : ctx_do_fake.symbol_table[i]) {
-        for (int j = 0;
-            j < (int)ctx_do_fake.loop_continue_symbol_snapshot.top().size(); j++) {
-            if (symbol.second.name !=
-                ctx_do_fake.loop_continue_symbol_snapshot.top()[j][i]
-                    .find(symbol.first)
-                    ->second.name) {
-            ctx_do.loop_continue_phi_move.top().insert(
-                {{i, symbol.first}, "%" + std::to_string(ctx_do.get_id())});
-            break;
+
+    for (int i = 0; i < (int)ctx_do_fake.symbol_table.size(); i++) 
+    {
+        for (auto& symbol : ctx_do_fake.symbol_table[i]) 
+        {
+            for (int j = 0;
+                j < (int)ctx_do_fake.loop_continue_symbol_snapshot.top().size(); j++) 
+            {
+                if (symbol.second.name !=
+                    ctx_do_fake.loop_continue_symbol_snapshot.top()[j][i]
+                        .find(symbol.first)->second.name) 
+                {
+                    ctx_do.loop_continue_phi_move.top().insert(
+                        {{i, symbol.first}, "%" + std::to_string(ctx_do.get_id())});
+                    break;
+                }
             }
-        }
         }
     }
-    for (int i = 0; i < (int)ctx_cond.symbol_table.size(); i++) {
-        for (auto& symbol : ctx_cond.symbol_table[i]) {
-        for (int j = 0; j <(int) ctx_do_fake.loop_break_symbol_snapshot.top().size();
-            j++) {
-            const auto do_name = ctx_do_fake.loop_break_symbol_snapshot.top()[j][i]
-                                    .find(symbol.first)
-                                    ->second.name;
-            if (symbol.second.name != do_name) {
-            ctx_do.loop_break_phi_move.top().insert(
-                {{i, symbol.first}, symbol.second.name});
-            break;
+    for (int i = 0; i < (int)ctx_cond.symbol_table.size(); i++) 
+    {
+        for (auto& symbol : ctx_cond.symbol_table[i]) 
+        {
+            for (int j = 0; j <(int) ctx_do_fake.loop_break_symbol_snapshot.top().size();
+                j++) 
+            {
+                const auto do_name = 
+                    ctx_do_fake.loop_break_symbol_snapshot.top()[j][i].find(symbol.first)->second.name;
+                if (symbol.second.name != do_name) 
+                {
+                    ctx_do.loop_break_phi_move.top().insert(
+                        {{i, symbol.first}, symbol.second.name});
+                    break;
+                }
             }
-        }
         }
     }
     ir_do.emplace_back(irCODE::LABEL, "LOOP_" + ctx.loop_label.top() + "_DO");
     this->stmt.generate_ir(ctx_do, ir_do);
-    for (auto& i : ctx_do.loop_continue_phi_move.top()) {
-        ir_do.emplace_back(irCODE::PHI_MOVE, i.second,
-                        irOP(ctx_do.symbol_table[i.first.first]
-                                    .find(i.first.second)
-                                    ->second.name));
+    for (auto& i : ctx_do.loop_continue_phi_move.top()) 
+    {
+        ir_do.emplace_back(irCODE::PHI_MOVE, 
+                           i.second,
+                           irOP(ctx_do.symbol_table[i.first.first].find(i.first.second)->second.name));
         ir_do.back().phi_block = end.begin();
     }
     for (auto& i : ctx_do.loop_continue_phi_move.top()) {
@@ -610,15 +638,18 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx_continue = ctx_do;
     ir_continue.emplace_back(irCODE::LABEL,
                             "LOOP_" + ctx.loop_label.top() + "_CONTINUE");
-    for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) {
-        for (const auto& symbol_before : ctx_before.symbol_table[i]) {
-        const auto& symbo_continue =
-            *ctx_continue.symbol_table[i].find(symbol_before.first);
-        if (symbol_before.second.name != symbo_continue.second.name) {
-            ir_continue.emplace_back(irCODE::PHI_MOVE, symbol_before.second.name,
-                                    irOP(symbo_continue.second.name));
-            ir_continue.back().phi_block = ir_cond.begin();
-        }
+    for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++)
+    {
+        for (const auto& symbol_before : ctx_before.symbol_table[i]) 
+        {
+            const auto& symbo_continue =
+                *ctx_continue.symbol_table[i].find(symbol_before.first);
+            if (symbol_before.second.name != symbo_continue.second.name) 
+            {
+                ir_continue.emplace_back(irCODE::PHI_MOVE, symbol_before.second.name,
+                                        irOP(symbo_continue.second.name));
+                ir_continue.back().phi_block = ir_cond.begin();
+            }
         }
     }
     ir_continue.emplace_back(irCODE::JMP,

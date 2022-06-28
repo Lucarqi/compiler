@@ -547,7 +547,7 @@ void Context::array_store(ir::IR& ir,ostream& out)
             }
             else if(ir.op1.name[0]=='@'){
                 out<<"      mov32  r12,  "+rename(ir.op1.name)<<endl;
-                out<<"      STR  "+value+",  [12,"+index+"]"<<endl;
+                out<<"      STR  "+value+",  [r12,"+index+"]"<<endl;
             }
         }
     }
