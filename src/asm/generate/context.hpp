@@ -87,5 +87,8 @@ void array_build(ir::IR& ir, std::ostream& out);
 void array_store(ir::IR& ir,std::ostream& out);
 //数据加载
 void array_load(ir::IR& ir,std::ostream& out);
+//phi_move指令处理
+void phi_move(ir::IR& ir,std::ostream& out);
+
 };//class
 }//namespace

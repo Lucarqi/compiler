@@ -56,7 +56,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             out<<".global   "<<ir.label<<endl;
             out<<".type     "<<ir.label<<",   %function"<<endl;
             out<<ir.label+":"<<endl;
-            //只将sp压栈，当前函数的栈大小不变化。stack_size不变
+            //只将lr压栈，当前函数的虚拟栈大小不变化。stack_size不变
             out<<"      push  {lr}"<<endl;
         }
         else if(ir.ircode==ir::irCODE::MOV) 
@@ -75,7 +75,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                     out<<"      LDR  "+reg+",  [sp,#"+to_string((offset-3)*4)+
                         "]"<<endl;
                 }
-            }
+            }//正常MOV
             else{
                 if(!ir.dest.is_var()) throw runtime_error(ir.dest.name+":不是变量");
                 string dest = ctx.load_reg(ir.dest,out);
@@ -156,7 +156,6 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             else {
                 out<<"      ADD  "+dest+",  "+op1+",  "+op2<<endl;
             }
-
             if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
         }                                           
         else if(ir.ircode==ir::irCODE::SUB)      
@@ -164,6 +163,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             string dest = ctx.load_reg(ir.dest,out);
             string op1 = ctx.load_reg(ir.op1,out);
             string op2 = ctx.load_reg(ir.op2,out);
+            //std::cerr<<dest<<":"<<op1<<":"<<op2<<endl;
             if(op1.substr(0,1)=="#") {
                 out<<"      MOV  r14,  "+op1<<endl;
                 out<<"      SUB  "+dest+",  r14"+",  "+op2<<endl;
@@ -230,14 +230,38 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
         ||ir.ircode==ir::irCODE::MOVGT||ir.ircode==ir::irCODE::MOVLEQ
         ||ir.ircode==ir::irCODE::MOVLT||ir.ircode==ir::irCODE::MOVNQ){
             ctx.movdo(ir,out);
-        }//if(cond)条件判断开始，与mov类似
+        }//PHI_MOVE多次赋值
         else if(ir.ircode==ir::irCODE::PHI_MOVE){
             if(!ir.dest.is_local_var()) 
                 std::runtime_error("phi_move dest is not local_var");
-            string dest = ctx.load_reg(ir.dest,out);
-            string op1 = ctx.load_reg(ir.op1,out);
-            out<<"      MOV  "+dest+",  "+op1<<endl;
-            //这里不可能出现dest为global
+            if(ir.op1.is_imm()){
+                string dest = ctx.load_reg(ir.dest,out);
+                string op1 = ctx.load_reg(ir.op1,out);
+                out<<"      MOV  "+dest+",  "+op1<<endl;
+            }
+            else {
+                if(!ctx.var_in_reg.count(ir.op1.name) && 
+                !ctx.var_in_stack.count(ir.op1.name)){
+                    string dest = ctx.load_reg(ir.dest,out);
+                    out<<"      MOV  "+dest+",  #0"<<endl;
+                }
+                else {
+                    //第一次phi_move赋值，直接覆盖寄存器
+                    if(ctx.ir_in_time.at(&ir)==ctx.var_define_time.at(ir.dest.name))
+                    {
+                        string op1_reg = ctx.load_reg(ir.op1,out);
+                        //std::cerr<<op1_reg<<endl;
+                        int index = ctx.var_in_reg.at(ir.op1.name);
+                        ctx.off_var_in_reg(ir.op1.name,index);
+                        ctx.set_var_in_reg(ir.dest.name,index);
+                    }else{
+                        string dest = ctx.load_reg(ir.dest,out);
+                        string op1 = ctx.load_reg(ir.op1,out);
+                        //std::cerr<<dest<<":"<<op1<<endl;
+                        out<<"      MOV  "+dest+",  "+op1<<endl;
+                    }
+                }
+            }
         }//CMP判断指令，后接B型跳转指令或者MOV型条件判断
         else if(ir.ircode==ir::irCODE::CMP){
             ctx.cmp(ir,out);

@@ -104,9 +104,15 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
             int offset = var_in_stack.at(op.name);
             var_in_stack.erase(op.name);
             out<<"      LDR  r14,  [sp,#"+to_string(stack_size-offset)+"]"<<endl;
-            //理论上来说，应该栈减小?
+            /*
+            //理论上来说，应该栈减小?(这里是有问题的，因为有可能不是在栈的顶部)
             out<<"      POP"<<endl;
-            stack_size -= 4;
+            */
+            //只有当其在栈的顶部时，才将其pop出来，stack_size长度变小
+            if(stack_size == offset){
+                out<<"      POP"<<endl;
+                stack_size -= 4;
+            }
             string  reg = "r"+to_string(get_reg(op,out));
             out<<"      MOV  "+reg+",  r14"<<endl;
             return reg;
@@ -122,6 +128,7 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
         return load_global(op,out);
     }
     std::runtime_error(op.name+":不是立即数,不是局部变量，不是全局变量");
+    return "";
 }
 //加载全局变量到寄存器，以r14为基址，参数全局变量名称，out；
 string Context::load_global(ir::irOP op,ostream& out)
@@ -136,8 +143,11 @@ string Context::load_global(ir::irOP op,ostream& out)
         int offset = var_in_reg.at(op.name);
         var_in_stack.erase(op.name);
         out<<"      MOV  r14,  [sp,#"+to_string(stack_size-offset)<<"]"<<endl;
-        out<<"      POP"<<endl;
-        stack_size -=4;
+        //变量在当前栈顶，才将栈的长度减4
+        if(stack_size == offset){
+            out<<"      POP"<<endl;
+            stack_size -=4;
+        }
         int i = get_reg(op,out);
         out<<"      MOV  r"+to_string(i)+",  r14"<<endl;
         return "r"+to_string(i);
@@ -155,10 +165,9 @@ string Context::load_global(ir::irOP op,ostream& out)
 
 //在var_in_reg和reg_in_var添加信息
 void Context::set_var_in_reg(string name,int i){
-    if(!find_reg()) throw std::runtime_error("没有可存放寄存器给:"+to_string(i));
+    if(avalibel_reg[i]!=0) throw std::runtime_error("没有可存放寄存器给:"+to_string(i));
     this->var_in_reg.insert({name,i});
     this->reg_in_var.insert({i,name});
-    //std::cerr<<name+":reg"+to_string(i)<<endl;
     this->avalibel_reg[i] = 1;
 }
 //删除var_in_reg信息
@@ -175,6 +184,7 @@ void Context::off_var_in_reg(string name,int i){
 并且返回当前的寄存器号
 
 这里寄存器分配有问题？
+修改了
 */
 int Context::get_reg(ir::irOP op,ostream& out)
 {
@@ -195,13 +205,14 @@ int Context::get_reg(ir::irOP op,ostream& out)
                 set_var_in_reg(op.name,i);
                 return i;
             }//定义时间比最后使用时间小，且我的最后使用时间更小，将其取出压栈
-            //如果最后使用时间还比他长的话，不采取行动，有可能12个寄存器都不能用?
+            //如果最后使用时间还比他长的话，不采取行动，有可能12个寄存器都不能用(确实)
             if(time < var_lastused_time.at(op.name) && time > lastused_time){
                 lastused_time = time;
                 lastused_name = name;
             }
         } 
     }
+    //上面一种情况的处理
     if(lastused_time != -1)
     {
         //全部遍历完，都不符合条件，选择一个最后使用的压栈
@@ -210,9 +221,23 @@ int Context::get_reg(ir::irOP op,ostream& out)
         set_var_in_reg(op.name,to_stack_reg);
         store_var_stack(op.name,to_stack_reg,out);
         return to_stack_reg;
-    }//特殊情况，自己是最后一个使用的且寄存器是满的，加载到r12中，再压入栈中,这里存在问题
+    }//最一般情况，直接选择最后使用的那个溢出到栈
     else {
-        return 12;
+        int time_max=-1,index=-1;
+        //遍历所有寄存器，选择使用时间最长的压入到栈中
+        for(int i=0;i<reg_num;i++){
+            string name = reg_in_var.at(i);
+            if(time_max < var_lastused_time.at(name)){
+                time_max = var_define_time.at(name);
+                index = i;
+            }
+        }
+        if(index == -1) std::runtime_error(op.name+":未找到时间最晚使用的寄存器");
+        string name = reg_in_var.at(index);
+        off_var_in_reg(reg_in_var.at(index),index);
+        set_var_in_reg(op.name,index);
+        store_var_stack(name,index,out);
+        return index;
     }
 }
 
@@ -355,7 +380,7 @@ void Context::call_out(ostream& out)
     //没有还原的，不可能？
     if(max == -1){
 
-    }//还原r0
+    }//还原r0, stack_size长度不改变，因为call_in压栈时stack_size未改变
     else if(max == 0){
         out<<"      POP  {r0}"<<endl;
         stack_size -=4;
@@ -579,5 +604,13 @@ void Context::array_load(ir::IR& ir,ostream& out){
             throw std::runtime_error(ir.dest.name+"和"+ir.op2.name+"分配到同一个寄存器");
         out<<"      LDR  "+dest+",  [r12,"+index+"]"<<endl;
     }
+}
+/*
+phi_move多处语句赋值处理：
+cond时，只会加载立即数；while语句时，只会加载虚拟寄存器 
+*/
+void Context::phi_move(ir::IR& ir,ostream& out)
+{
+
 }
 }//namesapce
