@@ -27,29 +27,29 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
     bool need_args = false;
     //参数压栈的最大偏移值
     int args_max_offset = -1;
+    //遍历保存信息
+    for(auto it = begin;it!=end;it++)
+    {
+        ctx.set_ir_time(*it);
+    }
+    for(auto it = begin;it!=end;it++)
+    {
+        ctx.set_var_define_time(*it);
+    }
+    for(auto it = end;it!=begin;it--)
+    {
+        ctx.set_var_lastused_time(*it);
+    }
+    for(auto it = begin;it!=end;it++){
+        if(it->ircode==ir::irCODE::CALL){
+            ctx.has_call = true;
+        }
+    }
     //开始翻译
     for(auto i = begin;i!=end;i++)
-    {
-        //遍历保存信息
-        for(auto it = begin;it!=end;it++)
-        {
-            ctx.set_ir_time(*it);
-        }
-        for(auto it = begin;it!=end;it++)
-        {
-            ctx.set_var_define_time(*it);
-        }
-        for(auto it = end;it!=begin;it--)
-        {
-            ctx.set_var_lastused_time(*it);
-        }
-        for(auto it = begin;it!=end;it++){
-            if(it->ircode==ir::irCODE::CALL){
-                ctx.has_call = true;
-            }
-        }
-        
+    {   
         auto& ir = *i;
+        //std::cerr<<ctx.ir_in_time[&ir]<<":"<<ir.dest.name<<endl;
         if(ir.ircode==ir::irCODE::FUNCTION_BEGIN)
         {
             out<<".text"<<endl;
@@ -264,6 +264,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             }
         }//CMP判断指令，后接B型跳转指令或者MOV型条件判断
         else if(ir.ircode==ir::irCODE::CMP){
+            //std::cerr<<ctx.ir_in_time[&ir]<<endl;
             ctx.cmp(ir,out);
         }
         /*

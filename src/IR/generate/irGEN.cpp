@@ -183,7 +183,6 @@ void VoidStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
     //空过
 }
 
-
 /*
 赋值语句，需要判断lname定义
 数组赋值在store_runtime里面
@@ -239,6 +238,10 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
                 //非局部变量赋值，更新变量的虚拟寄存器号，保证SSA赋值
                 lh.name = "%" + std::to_string(ctx.get_id());
                 ir.emplace_back(irCODE::MOV, lh.name, rh);
+                //添加进入const_assign，直接求值
+                if (config::optimize_level > 0 && rh.is_imm()) {
+                    ctx.insert_const_assign(lh.name, rh.value);
+                }
             }
         }
     }
@@ -865,6 +868,17 @@ void ArrayIdentifier::store_runtime(ir::irOP value,ir::Context& ctx, ir::IRList&
     {
         if(this->shape.size() == v.shape.size())
         {
+            if (config::optimize_level > 0) {
+                try {
+                    int index = 0, size = 4;
+                    for (int i = this->shape.size() - 1; i >= 0; i--) {
+                        index += this->shape[i]->eval(ctx) * size;
+                        size *= v.shape[i];
+                    }
+                    ir.emplace_back(irCODE::STORE, irOP(), v.name, index, value);
+                    return;
+                } catch (...) {}
+            }
             /*判断维度大小，当数组维度出现变量时，不好检查错误
             for(int i=0;i < (int)v.shape.size();i++){
                 if(this->shape[i]->eval(ctx) >= v.shape[i])

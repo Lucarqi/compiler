@@ -18,6 +18,7 @@ int ast::node::Number::_eval(ir::Context& ctx) {return this->value;}
 //BianryExp：返回二元运算的值
 int ast::node::BinaryExpr::_eval(ir::Context& ctx)
 {
+    std::cerr<<"good"<<std::endl;
     switch(this->op)
     {
         case PLUS:
@@ -114,7 +115,7 @@ int ast::node::ArrayIdentifier::_eval(ir::Context& ctx){
         throw std::runtime_error(this->name.name+"：不是数组");
     }
 }
-//常量直接求值
+//变量标识符直接求值
 int ast::node::Identifier::_eval(ir::Context& ctx){
     try
     {
@@ -132,7 +133,7 @@ int ast::node::Identifier::_eval(ir::Context& ctx){
             return ctx.find_const_assign(ctx.find_symbol(this->name).name).value[0];
         }
     }
-}//编译期间求值
+}
 int ast::node::AfterInc::_eval(ir::Context& ctx){
     if(dynamic_cast<ast::node::ArrayIdentifier*>(&this->lname)!=nullptr){
         throw std::runtime_error("只有局部变量可以a++直接求值");
@@ -212,9 +213,11 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
     //直接返回编译期间立即数的运算结果
     if(config::optimize_level > 0){
         try{
-            return this->eval(ctx);
-        }catch(...){
-        }
+            std::cerr<<"in binary"<<std::endl;
+            int dest = this->eval(ctx);
+            std::cerr<<dest<<std::endl;
+            return dest;
+        }catch(...){}
     }
     ir::irOP dest="%"+std::to_string(ctx.get_id()), lh,rh;
     if(this->op!=AND && this->op!=OR)

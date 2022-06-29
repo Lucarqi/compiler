@@ -258,7 +258,6 @@ void Context::call_in(ostream& out)
     for(int i=0;i<12;i++){
         if(avalibel_reg[i]==1){
             string name = reg_in_var.at(i);
-            //std::cerr<<name+"in call_in_var:"+to_string(i)<<endl;
             call_in_reg.insert({name,i});
             off_var_in_reg(name,i);
             max = i;
@@ -370,13 +369,14 @@ void Context::call_out(ostream& out)
 {
     int max = -1;
     //此时已经实际入栈了，现在从call_in_reg入reg
-    for(auto i=call_in_reg.begin();i != call_in_reg.end();i++){
-        int reg_id = i->second;
+    for(auto i=this->call_in_reg.begin(); i!=this->call_in_reg.end(); i++){
         string name = i->first;
-        call_in_reg.erase(name);
+        int reg_id = i->second;
         set_var_in_reg(name,reg_id);
         if(reg_id > max) max = reg_id;
     }   
+    //此时删除call_in_reg中的值
+    this->call_in_reg.clear();
     //没有还原的，不可能？
     if(max == -1){
 
@@ -441,7 +441,7 @@ void Context::cmp(ir::IR& ir,std::ostream& out){
             out<<"      CMP  "+op1+",  r12"<<endl;
         }
         else {
-            out<<"      MOV  "+op1+",  "+op2<<endl;
+            out<<"      CMP  "+op1+",  "+op2<<endl;
         }
     }
 }
