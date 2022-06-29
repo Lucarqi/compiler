@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "IR/generate/generate.hpp"
 #include "asm/generate/generate.hpp"
+#include "IR/optimizer/optimize.hpp"
 
 int main(int arg,char** argv)
 {   
@@ -17,6 +18,9 @@ int main(int arg,char** argv)
     }
     //生成IR
     auto ir = sysy::ir::generate(root);
+    if(config::optimize_level > 0){
+        sysy::ir::optimize(ir);
+    }
     //输出IR
     if(config::print_ir)
     {
@@ -26,7 +30,6 @@ int main(int arg,char** argv)
     //生成汇编到文件
     sysy::asm_generator::generate_asm(ir,asmbuffer);
     *config::output << asmbuffer.str();
-
     if(config::output!=&std::cout) delete config::output;
     return 0;
 }

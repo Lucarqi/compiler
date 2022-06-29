@@ -198,8 +198,9 @@ void AssignStmt::irGEN(ir::Context& ctx,ir::IRList& ir)
     }
     else 
     {
-        auto& lh = ctx.find_symbol(this->lname.name);
         auto rh = this->rexpr.eval_run(ctx,ir);
+        auto& lh = ctx.find_symbol(this->lname.name);
+        //std::cerr<<lh.name<<std::endl;
         if(lh.is_array)
         {
             throw std::runtime_error("lexpr is a array");

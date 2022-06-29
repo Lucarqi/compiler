@@ -56,21 +56,11 @@ VarInfo& Context::find_symbol(std::string name,bool top)
 //根据标识符，查找ConstInfo
 ConstInfo& Context::find_const(std::string name,bool top)
 {
-    for(int i=const_table.size()-1;i>=0;i--)
-    {
+    for (int i = const_table.size() - 1; i >= 0; i--) {
         auto find = const_table[i].find(name);
-        if(top)
-        {
-            if(find!=const_table[i].end()) return find->second;  
-            else break;
-        }
-        else 
-        {
-            if(find!=const_table[i].end()) return find->second;
-        }
+        if (find != const_table[i].end()) return find->second;
     }
-    //没找到
-    throw error::UndefineVar();
+    throw std::out_of_range("No such const:" + name);
 }
 ConstInfo& Context::find_const_assign(std::string name){
     for(int i = const_assign_table.size() - 1;i>=0;i--){

@@ -8,5 +8,6 @@ namespace sysy::ir{
 void optimize(IRList& ir){
     using namespace sysy::ir::passes;
     unreachablecode(ir);
+    undocode(ir);
 }
 }
