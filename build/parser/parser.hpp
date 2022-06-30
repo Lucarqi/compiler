@@ -120,8 +120,7 @@ union YYSTYPE
     sysy::ast::node::IfStmt* ifstmt;
     sysy::ast::node::ConditionExpr* condexpr;
 
-
-#line 125 "/home/lucar/compiler/build/parser/parser.hpp"
+#line 124 "/home/lucar/compiler/build/parser/parser.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

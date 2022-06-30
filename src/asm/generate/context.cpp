@@ -1,7 +1,5 @@
 #include "asm/generate/context.hpp"
 
-
-
 namespace sysy::asm_generator
 {
 using namespace std;
@@ -93,6 +91,14 @@ void Context::store_var_stack(std::string name,int reg_id,ostream& out)
 string Context::load_reg(ir::irOP op,std::ostream& out)
 {
     if(op.is_imm()) return "#"+to_string(op.value);
+    else if(phi_in_stack.count(op.name)){
+        //在phi_move处理dest，这里处理op1-op3
+        int offset = this->stack_size - phi_in_stack.at(op.name);
+        out<<"      LDR  r14,  [sp,#"+to_string(offset)+"]"<<endl;
+        string reg = "r"+to_string(get_reg(op,out));
+        out<<"      MOV  "+reg+",  r14"<<endl;
+        return reg;
+    }
     else if(op.is_local_var())
     {
         if(var_in_reg.count(op.name)){
@@ -104,10 +110,6 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
             int offset = var_in_stack.at(op.name);
             var_in_stack.erase(op.name);
             out<<"      LDR  r14,  [sp,#"+to_string(stack_size-offset)+"]"<<endl;
-            /*
-            //理论上来说，应该栈减小?(这里是有问题的，因为有可能不是在栈的顶部)
-            out<<"      POP"<<endl;
-            */
             //只有当其在栈的顶部时，才将其pop出来，stack_size长度变小
             if(stack_size == offset){
                 out<<"      POP"<<endl;
@@ -127,40 +129,28 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
     {
         return load_global(op,out);
     }
-    std::runtime_error(op.name+":不是立即数,不是局部变量，不是全局变量");
+    throw std::runtime_error(op.name+":不是立即数,不是局部变量，不是全局变量");
     return "";
 }
 //加载全局变量到寄存器，以r14为基址，参数全局变量名称，out；
+//修改：不保存在寄存器或者栈中，每次使用加载到寄存器
 string Context::load_global(ir::irOP op,ostream& out)
 {
     string pointer = Context::rename(op.name);
-    //在寄存器上
-    if(var_in_reg.count(op.name)){
-        return "r"+to_string(var_in_reg.at(op.name));
-    }
-    //在栈上
-    else if(var_in_stack.count(op.name)){
-        int offset = var_in_reg.at(op.name);
-        var_in_stack.erase(op.name);
-        out<<"      MOV  r14,  [sp,#"+to_string(stack_size-offset)<<"]"<<endl;
-        //变量在当前栈顶，才将栈的长度减4
-        if(stack_size == offset){
-            out<<"      POP"<<endl;
-            stack_size -=4;
-        }
-        int i = get_reg(op,out);
-        out<<"      MOV  r"+to_string(i)+",  r14"<<endl;
-        return "r"+to_string(i);
-    }
-    //都不存在，首先加载到r14，再分配一个寄存器
-    else 
-    {
-        out<<"      mov32  r14,  "+pointer<<endl;
-        out<<"      LDR  r14,  [r14,#0]"<<endl;
-        int i = get_reg(op,out);
-        out<<"      MOV  r"+to_string(i)+",  r14"<<endl;
-        return "r"+to_string(i);
-    }
+    out<<"      mov32  r14,  "+pointer<<endl;
+    out<<"      LDR  r14,  [r14,#0]"<<endl;
+    int i = get_reg(op,out);
+    out<<"      MOV  r"+to_string(i)+",  r14"<<endl;
+    return "r"+to_string(i);
+}
+
+//保存全局变量：寄存器号，全局变量名称
+void Context::store_global(string reg,ir::irOP op,ostream& out){
+    if(!op.is_global_var()) throw std::runtime_error("不是全局变量:"+op.name);
+    string pointer = Context::rename(op.name);
+    //加载地址
+    out<<"      mov32  r14,  "+pointer<<endl;
+    out<<"      STR  "+reg+",  [r14,#0]"<<endl;
 }
 
 //在var_in_reg和reg_in_var添加信息
@@ -182,9 +172,6 @@ void Context::off_var_in_reg(string name,int i){
 若reg上有值，判定当前的时间和其最后一次用到的时间比较，次时间更大就直接占用
 若reg已经满了，则将最后才用到的reg压栈，并改变stack_size长度，并写入var_in_stack
 并且返回当前的寄存器号
-
-这里寄存器分配有问题？
-修改了
 */
 int Context::get_reg(ir::irOP op,ostream& out)
 {
@@ -194,6 +181,7 @@ int Context::get_reg(ir::irOP op,ostream& out)
     for(int i =0; i<reg_num; i++){
         if(avalibel_reg[i]==0){
             set_var_in_reg(op.name,i);
+            cerr<<op.name<<":"<<i<<endl;
             return i;
         }
         else{
@@ -215,7 +203,6 @@ int Context::get_reg(ir::irOP op,ostream& out)
     //上面一种情况的处理
     if(lastused_time != -1)
     {
-        //全部遍历完，都不符合条件，选择一个最后使用的压栈
         int to_stack_reg = var_in_reg.at(lastused_name);
         off_var_in_reg(lastused_name,to_stack_reg);
         set_var_in_reg(op.name,to_stack_reg);
@@ -232,7 +219,7 @@ int Context::get_reg(ir::irOP op,ostream& out)
                 index = i;
             }
         }
-        if(index == -1) std::runtime_error(op.name+":未找到时间最晚使用的寄存器");
+        if(index == -1) throw std::runtime_error(op.name+":未找到时间最晚使用的寄存器");
         string name = reg_in_var.at(index);
         off_var_in_reg(reg_in_var.at(index),index);
         set_var_in_reg(op.name,index);
@@ -241,19 +228,10 @@ int Context::get_reg(ir::irOP op,ostream& out)
     }
 }
 
-//保存全局变量：寄存器号，全局变量名称
-void Context::store_global(string reg,ir::irOP op,ostream& out){
-    if(!op.is_global_var()) throw std::runtime_error("不是全局变量:"+op.name);
-    string pointer = Context::rename(op.name);
-    //加载地址
-    out<<"      mov32  r14,  "+pointer<<endl;
-    out<<"      STR  "+reg+",  [r14,#0]"<<endl;
-}
-
 //寄存器值入栈，理论上是连续且从r0开始的?
 void Context::call_in(ostream& out)
 {
-    //遍历reg存入call_in_reg, 将存在的所有reg压栈（从r小到大）
+    //遍历reg存入call_in_reg, 将存在的所有reg压栈（从r小到大）,phi寄存器不会加入call_in_reg
     int max = -1;
     for(int i=0;i<12;i++){
         if(avalibel_reg[i]==1){
@@ -275,6 +253,34 @@ void Context::call_in(ostream& out)
     {
         out<<"      PUSH  {r0-r"+to_string(offset)+"}"<<endl;
         stack_size += (offset+1)*4;
+    }
+}
+
+//函数调用结束将寄存器的值还原，理论上是连续还原的
+void Context::call_out(ostream& out)
+{
+    int max = -1;
+    //此时已经实际入栈了，现在从call_in_reg入reg
+    for(auto i=this->call_in_reg.begin(); i!=this->call_in_reg.end(); i++){
+        string name = i->first;
+        int reg_id = i->second;
+        set_var_in_reg(name,reg_id);
+        if(reg_id > max) max = reg_id;
+    }   
+    //此时删除call_in_reg中的值
+    this->call_in_reg.clear();
+    //没有还原的，可能
+    if(max == -1){
+        //throw std::runtime_error("函数调用还原时，压栈数据为0");
+    }//还原r0, stack_size长度不改变，因为call_in压栈时stack_size未改变
+    else if(max == 0){
+        out<<"      POP  {r0}"<<endl;
+        stack_size -=4;
+    }
+    else 
+    {
+        out<<"      POP  {r0-r"+to_string(max)+"}"<<endl;
+        stack_size -= (max+1)*4;
     }
 }
 
@@ -347,6 +353,17 @@ void Context::load_call(ir::irOP op,int offset,ostream& out)
             out<<"      LDR  r14,  [sp,#"+to_string(stack_size-stack_offset)+"]"<<endl;
             out<<"      STR  r14,  [sp,#-"+to_string(greate_four*4)+"]"<<endl;
         }
+    }//在phi_in_stack，因为每次phi寄存器使用完会失效，call_in压不了栈
+    else if(phi_in_stack.count(op.name)){
+        int stack_offset = phi_in_stack.at(op.name);
+        if(greate_four <= 0){
+            out<<"      LDR  r"+to_string(offset)+",  [sp,#"+to_string(stack_offset-stack_offset)+
+            "]"<<endl;
+        }
+        else {
+            out<<"      LDR  r14,  [sp,#"+to_string(stack_size-stack_offset)+"]"<<endl;
+            out<<"      STR  r14,  [sp,#-"+to_string(greate_four*4)+"]"<<endl;
+        }
     }
     //全局变量作为形式参数传递，在add()中不会改变其值，此时只可能是全局变量尚未加载
     else if(op.is_global_var()){
@@ -361,39 +378,10 @@ void Context::load_call(ir::irOP op,int offset,ostream& out)
             out<<"      STR  r14,  [sp,#-"+to_string(greate_four*4)+"]"<<endl;
         }
     }
-    else throw std::runtime_error("函数参数不存在:"+op.name);
+    else throw std::runtime_error("函数调用时，传递参数不存在:"+op.name);
 }
 
-//函数调用结束将寄存器的值还原，理论上是连续还原的
-void Context::call_out(ostream& out)
-{
-    int max = -1;
-    //此时已经实际入栈了，现在从call_in_reg入reg
-    for(auto i=this->call_in_reg.begin(); i!=this->call_in_reg.end(); i++){
-        string name = i->first;
-        int reg_id = i->second;
-        set_var_in_reg(name,reg_id);
-        if(reg_id > max) max = reg_id;
-    }   
-    //此时删除call_in_reg中的值
-    this->call_in_reg.clear();
-    //没有还原的，不可能？
-    if(max == -1){
-
-    }//还原r0, stack_size长度不改变，因为call_in压栈时stack_size未改变
-    else if(max == 0){
-        out<<"      POP  {r0}"<<endl;
-        stack_size -=4;
-    }
-    else 
-    {
-        out<<"      POP  {r0-r"+to_string(max)+"}"<<endl;
-        stack_size -=(max+1)*4;
-    }
-}
-
-
-//实现除法
+//整除和求余
 void Context::div_mod(ir::IR& ir,ostream& out)
 {
     //将数据加载到reg上
@@ -475,17 +463,18 @@ void Context::movdo(ir::IR& ir,std::ostream& out){
         out<<"      MOVNE  "+dest+",  "+op1<<endl;
         out<<"      MOVEQ  "+dest+",  "+op2<<endl;
     }
-    else std::runtime_error("不可识别MOV选择赋值操作");
+    else throw std::runtime_error("不可识别MOV选择赋值操作");
 }
 
-//数组分配
+//局部数组分配，即拓展sp
 void Context::array_build(ir::IR& ir, ostream& out)
 {
     this->stack_size += ir.op1.value;
     out<<"      SUB  sp,  sp,  #"+to_string(ir.op1.value)<<endl;
     var_in_stack.insert({ir.dest.name,this->stack_size});
 }
-//数组压入数据，首先在r14压入数据，再实现压入(实现全局数组)
+
+//数组压入数据，首先在r14压入数据，再实现压入
 void Context::array_store(ir::IR& ir,ostream& out)
 {
     //局部数组初始值压栈，op2必须是立即数，压栈数值可能是变量、立即数，全局变量不考虑
@@ -544,11 +533,12 @@ void Context::array_store(ir::IR& ir,ostream& out)
             string index = load_reg(ir.op2,out);
             string value = load_reg(ir.op3,out);
             if(index == value) 
-                std::runtime_error(ir.op2.name+"和"+ir.op3.name+"分配到同一个寄存器");
+                throw std::runtime_error(ir.op2.name+"和"+ir.op3.name+"分配到同一个寄存器");
             if(index == "r12" || value == "r12")
-                std::runtime_error("index或者value分配到r12上,会被数组地址加载覆盖");
+                throw std::runtime_error("index或者value分配到r12上,会被数组地址加载覆盖");
+            //局部数组
             if(ir.op1.name[0]=='%')
-            {
+            {   //cerr<<"asdasd"<<endl;
                 if(ir.op1.name[1]!='&'){
                     //数组地址在var_in_reg上
                     if(var_in_reg.count(ir.op1.name)){
@@ -590,27 +580,113 @@ void Context::array_load(ir::IR& ir,ostream& out){
             throw std::runtime_error(ir.dest.name+"和"+ir.op2.name+"分配到同一个寄存器");
         out<<"      mov32  r12,  "+rename(ir.op1.name)<<endl;
         out<<"      LDR  "+dest+",  [r12,"+index+"]"<<endl;         
-    }//局部数组
+    }
+    /*
+    这里得分两种情况：1.局部数组形式，栈的位置代表数组起始点
+    2.参数数组形式，栈的内容是数组起始点
+    */
     else {
         if(!var_in_stack.count(ir.op1.name))
-        std::runtime_error(ir.op1.name+"数组未保存");
+           throw std::runtime_error(ir.op1.name+"数组未保存");
+        
         string dest = load_reg(ir.dest,out);
         string index = load_reg(ir.op2,out);
         int offset = this->stack_size - this->var_in_stack.at(ir.op1.name);
-        out<<"      ADD  r12,  sp,  #"+to_string(offset)<<endl;
         if(dest=="r12"||index=="r12")
             throw std::runtime_error("dest或者index被分配到r12,会被数组地址覆盖");
         if(index == dest) 
             throw std::runtime_error(ir.dest.name+"和"+ir.op2.name+"分配到同一个寄存器");
-        out<<"      LDR  "+dest+",  [r12,"+index+"]"<<endl;
+        //局部数组
+        if(ir.op1.name[1]=='&'){
+            out<<"      ADD  r12,  sp,  #"+to_string(offset)<<endl;
+            out<<"      LDR  "+dest+",  [r12,"+index+"]"<<endl;
+        }
+        //参数数组
+        else {
+            out<<"      LDR  r12,  [sp,#"+to_string(offset)+"]"<<endl;
+            out<<"      LDR  "+dest+",  [r12,"+index+"]"<<endl;
+        }
     }
 }
 /*
-phi_move多处语句赋值处理：
-cond时，只会加载立即数；while语句时，只会加载虚拟寄存器 
+phi_move节点处的赋值操作
 */
 void Context::phi_move(ir::IR& ir,ostream& out)
 {
-
+    if(!ir.dest.is_var()) throw std::runtime_error("非局部变量");
+    string dest = ir.dest.name;
+    //std::cerr<<dest<<endl;
+    //首次定义phi_move
+    if(var_define_time.at(dest)==ir_in_time[&ir]){
+        stack_size += 4;
+        phi_in_stack.insert({dest,stack_size});
+        out<<"      SUB  sp,  sp,  #4"<<endl;
+        if(ir.op1.is_imm()){
+            out<<"      MOV  r14,  #"+to_string(ir.op1.value)<<endl;
+            out<<"      STR  r14,  [sp,#0]"<<endl;
+        }
+        else if(ir.op1.name[0]=='%'&&
+            ir.op1.name[1]!='&'&&
+            (!var_in_reg.count(ir.op1.name))&&
+            (!var_in_stack.count(ir.op1.name))&&
+            (!phi_in_stack.count(ir.op1.name)))
+        {
+            out<<"      MOV  r14,  #0"<<endl;
+            out<<"      STR  r14,  [sp,#0]"<<endl;
+        }
+        else {
+            string op1 = load_reg(ir.op1,out);
+            out<<"      STR  "+op1+",  [sp,#0]"<<endl;
+        }    
+    }
+    //不是首次定义，第二次赋值
+    else {
+        if(!phi_in_stack.count(ir.dest.name)) 
+            throw std::runtime_error(ir.dest.name+":未找到定义");
+        int offset = this->stack_size - phi_in_stack.at(ir.dest.name);
+        if(ir.op1.is_imm()){
+            out<<"      MOV  r14,  #"+to_string(ir.op1.value)<<endl;
+            out<<"      STR  r14,  [sp,#"+to_string(offset)+"]"<<endl;
+        }
+        else {
+            string op1 = load_reg(ir.op1,out);
+            out<<"      STR  "+op1+",  [sp,#"+to_string(offset)+"]"<<endl;
+        }
+    }
+}
+//清除phi寄存器信息
+void Context::clear_phi_global(ir::IR& ir)
+{
+    //dest不需要清除，因为只有在phi_move时是可用的
+    if(ir.op1.is_local_var()&&phi_in_stack.count(ir.op1.name)){
+        int reg_id = var_in_reg.at(ir.op1.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
+    if(ir.op2.is_local_var()&&phi_in_stack.count(ir.op2.name)){
+        int reg_id = var_in_reg.at(ir.op2.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
+    if(ir.op3.is_local_var()&&phi_in_stack.count(ir.op3.name)){
+        int reg_id = var_in_reg.at(ir.op3.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
+    if(ir.op1.is_global_var()&&ir.op1.name[1]!='&'){
+        int reg_id = var_in_reg.at(ir.op1.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
+    if(ir.op2.is_global_var()&&ir.op2.name[1]!='&'){
+        int reg_id = var_in_reg.at(ir.op2.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
+    if(ir.op3.is_global_var()&&ir.op3.name[1]!='&'){
+        int reg_id = var_in_reg.at(ir.op3.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
+    }
 }
 }//namesapce

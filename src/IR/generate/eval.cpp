@@ -15,7 +15,7 @@ int ast::node::Expression::_eval(ir::Context& ctx)
 }
 //Number：返回数值
 int ast::node::Number::_eval(ir::Context& ctx) {return this->value;}
-//BianryExp：返回二元运算的值
+//BinaryExp：返回二元运算的值
 int ast::node::BinaryExpr::_eval(ir::Context& ctx)
 {
     switch(this->op)
@@ -81,7 +81,7 @@ int ast::node::UnaryExpr::_eval(ir::Context& ctx)
             break;
         default:
             //抛出异常，未知操作符号
-            throw std::runtime_error("Unkown OP");
+            throw std::runtime_error("Unkown_OP");
             break;
     }
 }
@@ -271,7 +271,7 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             }
             else ir.emplace_back(irCODE::MOD,dest,lh,rh);
             break;
-        // 实现条件判断
+        //根据cmp条件判断，生成相应MOV语句，应用于短路求值
         case EQ:
             ir.emplace_back(irCODE::CMP,ir::irOP(), lh, rh);
             ir.emplace_back(irCODE::MOVEQ,dest , 1, 0);
@@ -306,15 +306,16 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             //定义cond条件判断list模块
             ir::IRList end;
             end.emplace_back(ir::irCODE::LABEL,ir::irOP(),ir::irOP(),label);
-            //判断左值条件
+            //判断左值条件，有可能直接跳到，Cond_XX_END标签，直接进入到最后的cond部分判断
             auto lhs = this->lh.eval_cond_run(ctx,ir);
-            //phi_move，假设为假，0
+            //定义1个cond最终结果寄存器，放入0值，假设为假
             ir.emplace_back(ir::irCODE::PHI_MOVE, dest, ir::irOP(0));
             ir.back().phi_block = end.begin();
+            //假设为假才能直接跳转，且跳转到elseop
             ir.emplace_back(lhs.elseop, label);            
-            //判断右值条件
+            //如果前面没跳转，即左值为真，那么只看右值是1或者0
             auto rhs = this->rh.eval_run(ctx,ir);
-            //phi_move,不假设直接得到
+            //将其结果放入cond结果寄存器
             ir.emplace_back(ir::irCODE::PHI_MOVE, dest , rhs);
             ir.back().phi_block = end.begin();
             //合并endlist
@@ -331,7 +332,9 @@ ir::irOP ast::node::BinaryExpr::_eval_run(ir::Context& ctx,ir::IRList& ir)
             //假设上面判断为真
             ir.emplace_back(ir::irCODE::PHI_MOVE, dest ,ir::irOP(1));
             ir.back().phi_block = end.begin();
+            //这里插入thenop，因为是真才能直接跳转，且跳转到then
             ir.emplace_back(lhs.thenop, label);
+            //如果前面没有跳转，即左值为假，那么只看右值真假
             auto rhs = this->rh.eval_run(ctx,ir);
             ir.emplace_back(ir::irCODE::PHI_MOVE, dest, rhs);
             ir.back().phi_block = end.begin();
@@ -498,13 +501,10 @@ ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){
     }
 }
 
-/*
-控制流实现部分
-*/
 //逻辑运算判断(一元运算)，处理1/0值，具体的运算在UnaryExpr处
 ast::node::Expression::condResult ast::node::Expression::_eval_cond_run(ir::Context& ctx, IRList& ir)
 {
-    //注意此时then应该是!=0,即判断为真
+    //eval_run()返回0代表假，1代表真，这里与0比较相等跳转到else,不等跳转到then
     Expression::condResult ret;
     ir.emplace_back(irCODE::CMP, ir::irOP(), this->eval_run(ctx,ir), ir::irOP(0));
     ret.thenop = ir::irCODE::JNQ;
@@ -521,6 +521,7 @@ ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Cont
     ir::irOP lh,rh;
     if(this->op!=AND && this->op!=OR)
     {
+        //左值或者右值编译期间求值
         if(config::optimize_level > 0){
             try{
                 lh = this->lh.eval(ctx);
@@ -539,6 +540,7 @@ ast::node::Expression::condResult ast::node::BinaryExpr::_eval_cond_run(ir::Cont
     }
     switch(this->op)
     {
+        //根据cmp比较跳转
         case EQ:
             ir.emplace_back(ir::irCODE::CMP, ir::irOP(), lh,rh);
             ret.thenop = ir::irCODE::JEQ;

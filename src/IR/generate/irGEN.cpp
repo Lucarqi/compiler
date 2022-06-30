@@ -6,7 +6,6 @@ IR中间语言生成
 编译期间求值
 */
 #include <assert.h>
-
 #include "ast/node.hpp"
 #include "IR/ir.hpp"
 #include "IR/generate/context.hpp"
@@ -127,8 +126,8 @@ void FuncDefine::irGEN(ir::Context& ctx,IRList& ir)
             std::vector<int> shape;
             for(auto i: identifier->shape) shape.push_back(i->eval(ctx));
             std::string arg_re = "%"+std::to_string(ctx.get_id());
-            //保存参数
-            ir.emplace_back(irCODE::MOV,irOP(arg_re),irOP("$arg"+std::to_string(i)));
+            //保存参数，label处加入提示是数组
+            ir.emplace_back(irCODE::MOV,irOP(arg_re),irOP("$arg"+std::to_string(i)),"array");
             //添加进入当前函数符号表
             ctx.insert_symbol(identifier->name.name, VarInfo(arg_re,true,shape));
         }
@@ -390,23 +389,6 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     //进入首先添加循环的标识数字
     ctx.loop_label.push(std::to_string(ctx.get_id()));
     ctx.loop_var.push({});
-
-    // 此处的块与基本快有所不同，见下图
-    /*      ┌───────────┐
-       COND:│ cmp       │
-            ├───────────┤
-        JMP:│ // jne DO │
-            │ jeq END   │
-            ├───────────┤
-         DO:│ ...       │
-            │ break;    │
-            │ continue; │
-            ├───────────┤
-   CONTINUE:│ jmp COND  │
-            ├───────────┤
-        END:│           │
-            └───────────┘
-    */
     // 在 `jeq END`、`break;`、`continue`前均需要插入 PHI_MOV
 
     // BRFORE
@@ -669,7 +651,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx.end_scope();
 }
 
-//数组初始值无显示定义，全部定义为0
+//数组初始值无显示定义
 void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){
     //数组大小
     std::vector<int> shape;
@@ -783,7 +765,6 @@ namespace{
     //遍历list
     for (auto i : v) 
     {
-        //std::cerr<<i->is_number<<std::endl;
         //当前初始值是个数字
         if (i->is_number) {
             write_size++;

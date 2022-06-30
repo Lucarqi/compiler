@@ -27,6 +27,8 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
     bool need_args = false;
     //参数压栈的最大偏移值
     int args_max_offset = -1;
+    //数组作为函数参数保存到栈中，其总的个数
+    int array_as_param = 0;
     //遍历保存信息
     for(auto it = begin;it!=end;it++)
     {
@@ -65,15 +67,40 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             if(ir.op1.name.substr(0,4)=="$arg"){
                 string name = ir.op1.name;
                 int offset = stoi(name.substr(4));
+                //在r0-r3中
                 if(offset < 4){
-                    //在r0-r3中
-                    ctx.set_var_in_reg(ir.dest.name,offset);   
+                    //是数组，统一保存在var_in_stack中，前期寄存器少分配一个
+                    if(ir.label=="array"){
+                        array_as_param += 1;
+                        ctx.stack_size += 4;
+                        out<<"      STR  r"+to_string(offset)+",  [sp,#-"+to_string(ctx.stack_size)+"]"<<endl;
+                        ctx.var_in_stack.insert({ir.dest.name,ctx.stack_size});
+                    }
+                    else {
+                        ctx.set_var_in_reg(ir.op1.name,offset);
+                    }
+                    //跳转sp到正确位置
+                    if(offset == 0){
+                        int offset = array_as_param*4;
+                        out<<"      SUB  sp,  sp,  #"+to_string(offset)<<endl;
+                        array_as_param = 0;
+                    }   
                 }
+                //在栈中
                 else {
-                    //在栈中
-                    string reg = ctx.load_reg(ir.dest,out);
-                    out<<"      LDR  "+reg+",  [sp,#"+to_string((offset-3)*4)+
+                    //是数组
+                    if(ir.label == "array"){
+                        ctx.stack_size += 4;
+                        out<<"      LDR  r14,  [sp,#"+to_string((offset-3)*4)+
                         "]"<<endl;
+                        out<<"      STR  r14,  [sp,#-"+to_string(ctx.stack_size)<<"]"<<endl;
+                        ctx.var_in_stack.insert({ir.op1.name,ctx.stack_size});
+                    }
+                    else {
+                        string reg = ctx.load_reg(ir.dest,out);
+                        out<<"      LDR  "+reg+",  [sp,#"+to_string((offset-3)*4)+
+                        "]"<<endl;
+                    }
                 }
             }//正常MOV
             else{
@@ -84,6 +111,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 //全局变量的保存
                 if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
             }
+            ctx.clear_phi_global(ir);
         }
         else if(ir.ircode==ir::irCODE::SET_ARG)
         {
@@ -93,7 +121,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 has_set_args = true;
                 ctx.call_in(out);
                 args_max_offset += 1;
-                //std::cerr<<args_max_offset<<endl;
+                
                 ctx.load_call(ir.op1,ir.dest.value,out);
             }
             else {
@@ -107,7 +135,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 ctx.call_in(out);
             }//有参数入栈，sp改变
             if(args_max_offset > 3){
-                //cerr<<args_max_offset<<endl;
+                
                 out<<"      SUB  sp,  sp,  #"+to_string((args_max_offset-3)*4)<<endl;
             }
 
@@ -157,13 +185,14 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 out<<"      ADD  "+dest+",  "+op1+",  "+op2<<endl;
             }
             if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
+            ctx.clear_phi_global(ir);
         }                                           
         else if(ir.ircode==ir::irCODE::SUB)      
         {                                           
             string dest = ctx.load_reg(ir.dest,out);
             string op1 = ctx.load_reg(ir.op1,out);
             string op2 = ctx.load_reg(ir.op2,out);
-            //std::cerr<<dest<<":"<<op1<<":"<<op2<<endl;
+            
             if(op1.substr(0,1)=="#") {
                 out<<"      MOV  r14,  "+op1<<endl;
                 out<<"      SUB  "+dest+",  r14"+",  "+op2<<endl;
@@ -173,6 +202,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             }  
             
             if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
+            ctx.clear_phi_global(ir);
         }//注意是立即数时都需要
         else if(ir.ircode==ir::irCODE::MUL)      
         {                                           
@@ -189,11 +219,13 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             }
             out<<"      MUL  "+dest+",  "+op1+",  "+op2<<endl;
             if(ir.dest.is_global_var()) ctx.store_global(dest,ir.dest,out);
+            ctx.clear_phi_global(ir);
         } 
         //实现除法和求余
         else if(ir.ircode==ir::irCODE::DIV||ir.ircode==ir::irCODE::MOD)
         {
             ctx.div_mod(ir,out);
+            ctx.clear_phi_global(ir);
         }//跳转label
         else if(ir.ircode==ir::irCODE::LABEL){
             out<<ir.label <<":"<<endl;
@@ -232,40 +264,11 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             ctx.movdo(ir,out);
         }//PHI_MOVE多次赋值
         else if(ir.ircode==ir::irCODE::PHI_MOVE){
-            if(!ir.dest.is_local_var()) 
-                std::runtime_error("phi_move dest is not local_var");
-            if(ir.op1.is_imm()){
-                string dest = ctx.load_reg(ir.dest,out);
-                string op1 = ctx.load_reg(ir.op1,out);
-                out<<"      MOV  "+dest+",  "+op1<<endl;
-            }
-            else {
-                if(!ctx.var_in_reg.count(ir.op1.name) && 
-                !ctx.var_in_stack.count(ir.op1.name)){
-                    string dest = ctx.load_reg(ir.dest,out);
-                    out<<"      MOV  "+dest+",  #0"<<endl;
-                }
-                else {
-                    //第一次phi_move赋值，直接覆盖寄存器
-                    if(ctx.ir_in_time.at(&ir)==ctx.var_define_time.at(ir.dest.name))
-                    {
-                        string op1_reg = ctx.load_reg(ir.op1,out);
-                        //std::cerr<<op1_reg<<endl;
-                        int index = ctx.var_in_reg.at(ir.op1.name);
-                        ctx.off_var_in_reg(ir.op1.name,index);
-                        ctx.set_var_in_reg(ir.dest.name,index);
-                    }else{
-                        string dest = ctx.load_reg(ir.dest,out);
-                        string op1 = ctx.load_reg(ir.op1,out);
-                        //std::cerr<<dest<<":"<<op1<<endl;
-                        out<<"      MOV  "+dest+",  "+op1<<endl;
-                    }
-                }
-            }
+            ctx.phi_move(ir,out);
         }//CMP判断指令，后接B型跳转指令或者MOV型条件判断
         else if(ir.ircode==ir::irCODE::CMP){
-            //std::cerr<<ctx.ir_in_time[&ir]<<endl;
             ctx.cmp(ir,out);
+            ctx.clear_phi_global(ir);
         }
         /*
         下面实现数组的保存，加载和使用
@@ -277,14 +280,17 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
         }//局部或者全局数组的加载
         else if(ir.ircode==ir::irCODE::LOAD)
         {   
-            ctx.array_load(ir,out);   
+            ctx.array_load(ir,out); 
+            
+            ctx.clear_phi_global(ir);  
         }//局部或者全局数组值的保存
         else if(ir.ircode==ir::irCODE::STORE)
         {
             ctx.array_store(ir,out);
+            ctx.clear_phi_global(ir);
         }
         else if(ir.ircode==ir::irCODE::SAL){
-            if(!ir.dest.is_local_var()) std::runtime_error(ir.dest.name+":非局部变量");
+            if(!ir.dest.is_local_var()) throw std::runtime_error(ir.dest.name+":非局部变量");
             string dest = ctx.load_reg(ir.dest,out);
             string op1 = ctx.load_reg(ir.op1,out);
             string op2 = ctx.load_reg(ir.op2,out);
@@ -296,6 +302,10 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             else {
                 out<<"      LSL  "+dest+",  "+op1+",  "+op2<<endl;
             }
+            cerr<<dest<<":"<<op1<<endl;
+            cerr<<ctx.var_in_reg.at(ir.dest.name)<<":"<<ctx.var_in_reg.at(ir.op1.name)<<endl;
+            ctx.clear_phi_global(ir);
+            //cerr<<ctx.avalibel_reg[0]<<":"<<ctx.avalibel_reg[3]<<endl;
         }
     }
 }
