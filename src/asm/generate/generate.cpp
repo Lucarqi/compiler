@@ -29,6 +29,8 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
     int args_max_offset = -1;
     //数组作为函数参数保存到栈中，其总的个数
     int array_as_param = 0;
+    //是否有参数
+    bool has_arg = false;
     //遍历保存信息
     for(auto it = begin;it!=end;it++)
     {
@@ -47,6 +49,10 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             ctx.has_call = true;
         }
     }
+    for(auto it = begin;it!=end;it++){
+        ctx.phi_alloc(*it);
+    }
+    if(!ctx.phi_in_stack.empty()) ctx.need_prealloc=true;
     //开始翻译
     for(auto i = begin;i!=end;i++)
     {   
@@ -60,6 +66,10 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             out<<ir.label+":"<<endl;
             //只将lr压栈，当前函数的虚拟栈大小不变化。stack_size不变
             out<<"      push  {lr}"<<endl;
+            if(ir.op1.value!=0) has_arg = true;
+            if(ctx.need_prealloc && !has_arg){
+                ctx.pre_alloc(out);
+            }
         }
         else if(ir.ircode==ir::irCODE::MOV) 
         {
@@ -77,13 +87,17 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                         ctx.var_in_stack.insert({ir.dest.name,ctx.stack_size});
                     }
                     else {
-                        ctx.set_var_in_reg(ir.op1.name,offset);
+                        ctx.set_var_in_reg(ir.dest.name,offset);
                     }
                     //跳转sp到正确位置
                     if(offset == 0){
                         int offset = array_as_param*4;
                         out<<"      SUB  sp,  sp,  #"+to_string(offset)<<endl;
                         array_as_param = 0;
+                        if(ctx.need_prealloc && has_arg){
+                            ctx.pre_alloc(out);
+                            has_arg = 0;
+                        }
                     }   
                 }
                 //在栈中
@@ -104,7 +118,8 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
                 }
             }//正常MOV
             else{
-                if(!ir.dest.is_var()) throw runtime_error(ir.dest.name+":不是变量");
+                if(!ir.dest.is_var()) 
+                    throw runtime_error(ir.dest.name+":不是变量");
                 string dest = ctx.load_reg(ir.dest,out);
                 string op1 = ctx.load_reg(ir.op1,out);
                 out<<"      MOV  "+dest+",  "+op1<<endl;
@@ -265,6 +280,7 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
         }//PHI_MOVE多次赋值
         else if(ir.ircode==ir::irCODE::PHI_MOVE){
             ctx.phi_move(ir,out);
+            ctx.clear_phi_global(ir);
         }//CMP判断指令，后接B型跳转指令或者MOV型条件判断
         else if(ir.ircode==ir::irCODE::CMP){
             ctx.cmp(ir,out);
@@ -302,11 +318,9 @@ void generate_function(ir::IRList& irs,ir::IRList::iterator begin,
             else {
                 out<<"      LSL  "+dest+",  "+op1+",  "+op2<<endl;
             }
-            cerr<<dest<<":"<<op1<<endl;
-            cerr<<ctx.var_in_reg.at(ir.dest.name)<<":"<<ctx.var_in_reg.at(ir.op1.name)<<endl;
             ctx.clear_phi_global(ir);
-            //cerr<<ctx.avalibel_reg[0]<<":"<<ctx.avalibel_reg[3]<<endl;
         }
+        else if(ir.ircode==ir::irCODE::NOOP) continue;
     }
 }
 

@@ -6,6 +6,7 @@ IR中间语言生成
 编译期间求值
 */
 #include <assert.h>
+#include <unordered_set>
 #include "ast/node.hpp"
 #include "IR/ir.hpp"
 #include "IR/generate/context.hpp"
@@ -362,7 +363,7 @@ void ContinueStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
     ctx.loop_continue_symbol_snapshot.top().push_back(ctx.symbol_table);
     for (auto& i : ctx.loop_continue_phi_move.top()) {
         ir.emplace_back(
-            irCODE::MOV, i.second,
+            irCODE::PHI_MOVE, i.second,
             irOP(
                 ctx.symbol_table[i.first.first].find(i.first.second)->second.name));
     }
@@ -373,7 +374,7 @@ void BreakStmt::irGEN(ir::Context& ctx,ir::IRList& ir){
     ctx.loop_break_symbol_snapshot.top().push_back(ctx.symbol_table);
     for (auto& i : ctx.loop_break_phi_move.top()) {
         ir.emplace_back(
-            irCODE::MOV, i.second,
+            irCODE::PHI_MOVE, i.second,
             irOP(
                 ctx.symbol_table[i.first.first].find(i.first.second)->second.name));
     }
@@ -636,6 +637,23 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     }
     ir_continue.emplace_back(irCODE::JMP,
                             "LOOP_" + ctx.loop_label.top() + "_BEGIN");
+    //假读延长生命周期
+    std::unordered_set<std::string> written;
+    for (auto& irs : std::vector<IRList*>{&ir_cond, &ir_jmp, &ir_do}) {
+        for (auto& i : *irs) {
+        if (i.dest.is_var()) written.insert(i.dest.name);
+        i.forEachOp(
+            [&](irOP op) {
+                if (op.is_var()) {
+                if (!written.count(op.name)) {
+                    ir_continue.emplace_back(irCODE::NOOP, irOP(), op);
+                }
+                }
+            },
+            false);
+        }
+    }
+    
     //连接ir
     ctx = ctx_cond;
     ctx.id = ctx_continue.id;
@@ -670,7 +688,7 @@ void ArrayDecl::irGEN(ir::Context& ctx,ir::IRList& ir){
     else
     {   //分配一个局部的未初始化数组，放在栈中，全部为0
         ctx.insert_symbol(this->name.name.name,
-                        VarInfo("&"+ std::to_string(ctx.get_id()),true,shape));
+                        VarInfo("%&"+ std::to_string(ctx.get_id()),true,shape));
         ir.push_back(IR(irCODE::MALLOC_IN_STACK,
                     irOP(ctx.find_symbol(this->name.name.name).name),
                     size*4));
@@ -708,6 +726,9 @@ namespace{
             {   //直接占位子，不生成STORE，栈中默认是0
                 for (int i = 0; i < value; i++) {
                     init_value.push_back(0);
+                    ir.emplace_back(irCODE::STORE, irOP(),
+                                irOP(ctx.find_symbol(that.name.name.name).name),
+                                init_value.size() * 4 - 4, 0);
                 }
             }
         }//是值 
@@ -739,6 +760,9 @@ namespace{
                 for (int i = 0; i < value.value; i++) 
                 {
                     init_value.push_back(0);
+                    ir.emplace_back(irCODE::STORE, irOP(),
+                                    irOP(ctx.find_symbol(that.name.name.name).name),
+                                    init_value.size() * 4 - 4, 0);
                 }
             }
         } 

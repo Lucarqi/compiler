@@ -42,6 +42,10 @@ void BaseNode::generate_ir(ir::Context& ctx,ir::IRList& ir)
             <<":"<<this->column<< e.what() << '\n'; 
         abort();
     }
+    catch(std::exception& e){
+        nodes.pop();
+        throw e;
+    }
 }
 
 /*
@@ -56,11 +60,16 @@ int Expression::eval(ir::Context& ctx)
         nodes.pop();
         return ret;
     }
-    catch(const std::exception& e)
+    catch(error::BaseError& e){
+        nodes.pop();
+        std::cerr <<sysy::config::filename<<":"<<this->line
+            <<":"<<this->column<< e.what() << '\n'; 
+        abort();
+    }
+    catch(std::exception& e)
     {
         nodes.pop();
-        std::cerr << e.what() << '\n';
-        abort();
+        throw e;
     }
 }
 ir::irOP Expression::eval_run(ir::Context& ctx,ir::IRList& ir)
@@ -76,6 +85,9 @@ ir::irOP Expression::eval_run(ir::Context& ctx,ir::IRList& ir)
         std::cerr <<sysy::config::filename<<":"<<this->line
             <<":"<<this->column<< e.what() << '\n'; 
         abort();
+    }catch(std::exception& e){
+        nodes.pop();
+        throw e;
     }
 }
 Expression::condResult Expression::eval_cond_run(ir::Context& ctx,ir::IRList& ir)
@@ -87,10 +99,9 @@ Expression::condResult Expression::eval_cond_run(ir::Context& ctx,ir::IRList& ir
         nodes.pop();
         return ret;
     }
-    catch(const std::exception& e)
+    catch(std::exception& e)
     {
         nodes.pop();
-        std::cerr << e.what() << '\n';
         abort();
     }
 }

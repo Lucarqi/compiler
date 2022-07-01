@@ -1,7 +1,8 @@
 #pragma once
 #include <iostream>
 #include <list>
-
+#include <functional>
+#include <string>
 #include "IR/generate/context.hpp"
 namespace sysy::ir{
 //IRop,中间语言操作对象
@@ -67,6 +68,7 @@ enum class irCODE{
     LOAD,               //从内存加载到寄存器
     DATA_SPACE,         //全局变量开辟空间占位子
     MALLOC_IN_STACK,    //为临时数组分配空间 name size
+    NOOP,               //假读延长生命周期
 };
 //IR,中间语言定义
 class IR{
@@ -99,6 +101,13 @@ class IR{
     void print_format(std::string name,std::ostream& out=std::cerr);
     //定义迭代器
     std::list<IR>::iterator phi_block;
+    //遍历ir中irOP
+    bool some(decltype(&sysy::ir::irOP::is_var) callback,
+            bool include_dest = true) const;
+    bool some(std::function<bool(const sysy::ir::irOP&)> callback,
+                bool include_dest = true) const;
+    void forEachOp(std::function<void(const sysy::ir::irOP&)> callback,
+                    bool include_dest = true) const;
 };
 //全部IR的list,.emplace_back添加IR对象
 using IRList=std::list<IR>;

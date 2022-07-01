@@ -92,17 +92,19 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
 {
     if(op.is_imm()) return "#"+to_string(op.value);
     else if(phi_in_stack.count(op.name)){
-        //在phi_move处理dest，这里处理op1-op3
         int offset = this->stack_size - phi_in_stack.at(op.name);
         out<<"      LDR  r14,  [sp,#"+to_string(offset)+"]"<<endl;
         string reg = "r"+to_string(get_reg(op,out));
         out<<"      MOV  "+reg+",  r14"<<endl;
         return reg;
     }
-    else if(op.is_local_var())
+    else if(op.is_var())
     {
         if(var_in_reg.count(op.name)){
             return "r"+to_string(var_in_reg.at(op.name));
+        }//保证同一个语句连续使用全局变量，只加载1次如ADD %2 @k,@k
+        else if(op.is_global_var()){
+            return load_global(op,out);
         }
         else if(var_in_stack.count(op.name))
         {
@@ -124,10 +126,6 @@ string Context::load_reg(ir::irOP op,std::ostream& out)
             int i = get_reg(op,out);
             return "r"+to_string(i);
         }
-    }
-    else if(op.is_global_var())
-    {
-        return load_global(op,out);
     }
     throw std::runtime_error(op.name+":不是立即数,不是局部变量，不是全局变量");
     return "";
@@ -181,7 +179,6 @@ int Context::get_reg(ir::irOP op,ostream& out)
     for(int i =0; i<reg_num; i++){
         if(avalibel_reg[i]==0){
             set_var_in_reg(op.name,i);
-            cerr<<op.name<<":"<<i<<endl;
             return i;
         }
         else{
@@ -221,7 +218,7 @@ int Context::get_reg(ir::irOP op,ostream& out)
         }
         if(index == -1) throw std::runtime_error(op.name+":未找到时间最晚使用的寄存器");
         string name = reg_in_var.at(index);
-        off_var_in_reg(reg_in_var.at(index),index);
+        off_var_in_reg(name,index);
         set_var_in_reg(op.name,index);
         store_var_stack(name,index,out);
         return index;
@@ -413,8 +410,8 @@ void Context::div_mod(ir::IR& ir,ostream& out)
 //当为立即数时，首先加载到r12，其次加载到r14
 void Context::cmp(ir::IR& ir,std::ostream& out){
     if(ir.op1.is_imm()&&ir.op2.is_imm()){
-        out<<"      MOV  r12,  #"+to_string(ir.op1.value);
-        out<<"      MOV  r14,  #"+to_string(ir.op2.value);
+        out<<"      MOV  r12,  #"+to_string(ir.op1.value)<<endl;
+        out<<"      MOV  r14,  #"+to_string(ir.op2.value)<<endl;
         out<<"      CMP  r12,  r14"<<endl;
     }
     else {
@@ -485,7 +482,7 @@ void Context::array_store(ir::IR& ir,ostream& out)
             out<<"      STR  r14,  [sp,#"+to_string(offset)+']'<<endl;
         }
         else {
-            //加载变量，此时变量一定存在，此时可能存在压栈操作，需要将offset计算调整
+            //加载变量，此时变量一定存在，此时可能存在压栈操作，需要将offset计算调整?
             string reg = load_reg(ir.op3,out);
             int offset = this->stack_size - var_in_stack.at(ir.op1.name) + ir.op2.value;
             out<<"      STR  "+reg+",  [sp,#"+to_string(offset)+"]"<<endl;
@@ -538,7 +535,7 @@ void Context::array_store(ir::IR& ir,ostream& out)
                 throw std::runtime_error("index或者value分配到r12上,会被数组地址加载覆盖");
             //局部数组
             if(ir.op1.name[0]=='%')
-            {   //cerr<<"asdasd"<<endl;
+            {  
                 if(ir.op1.name[1]!='&'){
                     //数组地址在var_in_reg上
                     if(var_in_reg.count(ir.op1.name)){
@@ -549,7 +546,7 @@ void Context::array_store(ir::IR& ir,ostream& out)
                     //数组地址在var_in_stack上
                     else if(var_in_stack.count(ir.op1.name)){
                         int offset = this->stack_size - var_in_stack.at(ir.op1.name);
-                        out<<"      MOV  r12,  [sp,#"+to_string(offset)+"]"<<endl;
+                        out<<"      LDR  r12,  [sp,#"+to_string(offset)+"]"<<endl;
                         out<<"      STR  "+value+",  [r12,"+index+"]"<<endl;
                     }
                     else throw runtime_error(ir.op1.name+":形参数组地址加载出错");
@@ -609,55 +606,38 @@ void Context::array_load(ir::IR& ir,ostream& out){
     }
 }
 /*
-phi_move节点处的赋值操作
+phi_move节点处的赋值操作，此时phi寄存器已经存在在栈中
 */
 void Context::phi_move(ir::IR& ir,ostream& out)
 {
     if(!ir.dest.is_var()) throw std::runtime_error("非局部变量");
     string dest = ir.dest.name;
-    //std::cerr<<dest<<endl;
-    //首次定义phi_move
-    if(var_define_time.at(dest)==ir_in_time[&ir]){
-        stack_size += 4;
-        phi_in_stack.insert({dest,stack_size});
-        out<<"      SUB  sp,  sp,  #4"<<endl;
-        if(ir.op1.is_imm()){
-            out<<"      MOV  r14,  #"+to_string(ir.op1.value)<<endl;
-            out<<"      STR  r14,  [sp,#0]"<<endl;
-        }
-        else if(ir.op1.name[0]=='%'&&
+    if(!phi_in_stack.count(dest)) 
+        throw std::runtime_error(dest+":phi寄存器未保存");
+    int offset = this->stack_size - phi_in_stack.at(dest);
+    string op1 = "";
+    if(ir.op1.is_imm()){
+        out<<"      MOV  r14,  #"+to_string(ir.op1.value)<<endl;;
+        op1 = "r14";
+    }
+    else if(ir.op1.name[0]=='%'&&
             ir.op1.name[1]!='&'&&
             (!var_in_reg.count(ir.op1.name))&&
             (!var_in_stack.count(ir.op1.name))&&
             (!phi_in_stack.count(ir.op1.name)))
-        {
-            out<<"      MOV  r14,  #0"<<endl;
-            out<<"      STR  r14,  [sp,#0]"<<endl;
-        }
-        else {
-            string op1 = load_reg(ir.op1,out);
-            out<<"      STR  "+op1+",  [sp,#0]"<<endl;
-        }    
+    {
+        out<<"      MOV  r14,  #0"<<endl;
+        op1 = "r14";
     }
-    //不是首次定义，第二次赋值
     else {
-        if(!phi_in_stack.count(ir.dest.name)) 
-            throw std::runtime_error(ir.dest.name+":未找到定义");
-        int offset = this->stack_size - phi_in_stack.at(ir.dest.name);
-        if(ir.op1.is_imm()){
-            out<<"      MOV  r14,  #"+to_string(ir.op1.value)<<endl;
-            out<<"      STR  r14,  [sp,#"+to_string(offset)+"]"<<endl;
-        }
-        else {
-            string op1 = load_reg(ir.op1,out);
-            out<<"      STR  "+op1+",  [sp,#"+to_string(offset)+"]"<<endl;
-        }
+        op1 = load_reg(ir.op1,out);
     }
+    out<<"      STR  "+op1+",  [sp,#"+to_string(offset)+"]"<<endl;
 }
 //清除phi寄存器信息
 void Context::clear_phi_global(ir::IR& ir)
 {
-    //dest不需要清除，因为只有在phi_move时是可用的
+    //dest不需要清理
     if(ir.op1.is_local_var()&&phi_in_stack.count(ir.op1.name)){
         int reg_id = var_in_reg.at(ir.op1.name);
         string name = reg_in_var.at(reg_id);
@@ -672,6 +652,11 @@ void Context::clear_phi_global(ir::IR& ir)
         int reg_id = var_in_reg.at(ir.op3.name);
         string name = reg_in_var.at(reg_id);
         off_var_in_reg(name,reg_id);
+    }//全局变量可以清除
+    if(ir.dest.is_global_var()&&ir.dest.name[1]!='&'){
+        int reg_id = var_in_reg.at(ir.dest.name);
+        string name = reg_in_var.at(reg_id);
+        off_var_in_reg(name,reg_id);
     }
     if(ir.op1.is_global_var()&&ir.op1.name[1]!='&'){
         int reg_id = var_in_reg.at(ir.op1.name);
@@ -679,14 +664,43 @@ void Context::clear_phi_global(ir::IR& ir)
         off_var_in_reg(name,reg_id);
     }
     if(ir.op2.is_global_var()&&ir.op2.name[1]!='&'){
-        int reg_id = var_in_reg.at(ir.op2.name);
-        string name = reg_in_var.at(reg_id);
-        off_var_in_reg(name,reg_id);
+        try
+        {
+            int reg_id = var_in_reg.at(ir.op2.name);
+            string name = reg_in_var.at(reg_id);
+            off_var_in_reg(name,reg_id);
+        }catch(...){}
     }
     if(ir.op3.is_global_var()&&ir.op3.name[1]!='&'){
         int reg_id = var_in_reg.at(ir.op3.name);
         string name = reg_in_var.at(reg_id);
         off_var_in_reg(name,reg_id);
     }
+}
+//开始时phi寄存器预分配
+void Context::phi_alloc(ir::IR& cur){
+    if(cur.ircode==ir::irCODE::PHI_MOVE){
+        int time = ir_in_time[&cur];
+        //出现则插入，如果存在就不插入
+        if(!phi_in_stack.count(cur.dest.name))
+        {
+            phi_in_stack.insert({cur.dest.name,time});
+        }
+    }
+}
+/*
+函数有参数，在参数全部处理完再压栈(因为数组会压栈分配)
+没有参数，在function_begin之后分配栈
+*/
+void Context::pre_alloc(ostream& out){
+    //查看phi_in_stack，初始分配0到栈
+    if(phi_in_stack.empty()) throw std::runtime_error("phi_in_stack为空值");
+    int k=0;
+    for(auto it=phi_in_stack.begin();it!=phi_in_stack.end();it++){
+        this->stack_size += 4;
+        k++;
+        it->second = this->stack_size;
+    }
+    if(k!=0) out<<"      SUB  sp,  sp,  #"+to_string(k*4)<<endl;
 }
 }//namesapce

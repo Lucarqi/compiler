@@ -16,7 +16,8 @@ class Context
 {
 private:
 //记录每条语句时间
-    int time=0;
+int time=0;
+
 public:
 ir::IRList* irs;
 ir::IRList::iterator function_begin;
@@ -41,16 +42,19 @@ std::unordered_map<int,std::string> reg_in_var ;
 std::unordered_map<std::string,int> var_in_stack ;
 //函数调用，在set_arg时，全部压入此数据向
 std::unordered_map<std::string ,int> call_in_reg ;
+//将phi_move中的dest寄存器，保存在栈中
+std::unordered_map<std::string ,int> phi_in_stack;
+
 //寄存器可用标志
 std::bitset<12> avalibel_reg = 0b000000000000;
-
 
 //存不存在函数调用
 bool has_call = false;
 int reg_num=12;
 //sp指针偏移
 int stack_size=0;
-
+//需要预先设置栈
+bool need_prealloc=false;
 
 //设置ir_time
 void set_ir_time(ir::IR& cur);
@@ -65,7 +69,6 @@ void set_var_in_reg(std::string name,int i);
 void off_var_in_reg(std::string name,int i);
 void store_var_stack(std::string name,int reg_id,std::ostream& out);
 std::string load_global(ir::irOP op,std::ostream& out);
-
 bool find_reg();
 static std::string rename(std::string name);
 std::string load_reg(ir::irOP op,std::ostream& out);
@@ -89,6 +92,10 @@ void array_store(ir::IR& ir,std::ostream& out);
 void array_load(ir::IR& ir,std::ostream& out);
 //phi_move指令处理
 void phi_move(ir::IR& ir,std::ostream& out);
-
+//清除phi寄存器和全局变量寄存器信息
+void clear_phi_global(ir::IR& ir);
+//开始时phi寄存器预分配
+void phi_alloc(ir::IR& cur);
+void pre_alloc(std::ostream& out);
 };//class
 }//namespace

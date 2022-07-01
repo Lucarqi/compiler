@@ -60,6 +60,7 @@ ConstInfo& Context::find_const(std::string name,bool top)
         auto find = const_table[i].find(name);
         if (find != const_table[i].end()) return find->second;
     }
+    //std::cerr<<name<<std::endl;
     throw std::out_of_range("No such const:" + name);
 }
 ConstInfo& Context::find_const_assign(std::string name){

@@ -96,6 +96,7 @@ int ast::node::ValueExpr::_eval(ir::Context& ctx)
 }
 //常量数组直接求值
 int ast::node::ArrayIdentifier::_eval(ir::Context& ctx){
+    //std::cerr<<this->name.name<<"+++"<<std::endl;
     auto v = ctx.find_const(this->name.name);
     if(v.is_array){
         if(v.shape.size()!=this->shape.size()){
@@ -450,6 +451,7 @@ ir::irOP ast::node::ConditionExpr::_eval_run(ir::Context& ctx,ir::IRList& ir){
 */
 ir::irOP ast::node::ArrayIdentifier::_eval_run(ir::Context& ctx,ir::IRList& ir){
     auto v = ctx.find_symbol(this->name.name);
+    //std::cerr<<v.name<<":"<<std::endl;
     if(v.is_array)
     {
         //作为右值载入，一定存在

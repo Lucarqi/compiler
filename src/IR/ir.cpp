@@ -85,6 +85,7 @@ void IR::print(std::ostream& out)
         case irCODE::DATA_SPACE:print_format("SPACE",out);break;
         case irCODE::MALLOC_IN_STACK:print_format("MALLOC_IN_STACK",out);break;
         case irCODE::LOAD:print_format("LOAD",out);break;
+        case irCODE::NOOP:print_format("NOOP",out);break;
         default:
             std::cerr <<"Unkown irCODE"<<std::endl;
     }
@@ -114,5 +115,24 @@ void IR::print_format(std::string code,std::ostream& out)
     out<<code<<std::string(16-code.size(),' ');
 }
 
+bool IR::some(decltype(&sysy::ir::irOP::is_var) callback,
+              bool include_dest) const {
+  return this->some([callback](irOP op) { return (op.*callback)(); },
+                    include_dest);
+}
+bool IR::some(std::function<bool(const sysy::ir::irOP&)> callback,
+              bool include_dest) const {
+  return (include_dest && callback(this->dest)) || callback(this->op1) ||
+         callback(this->op2) || callback(this->op3);
+}
+void IR::forEachOp(std::function<void(const sysy::ir::irOP&)> callback,
+                   bool include_dest) const {
+  this->some(
+      [callback](const sysy::ir::irOP& op) {
+        callback(op);
+        return false;
+      },
+      include_dest);  
+}
 
 }
