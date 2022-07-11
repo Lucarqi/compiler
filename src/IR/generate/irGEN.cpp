@@ -499,7 +499,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ir_cond.clear();
     ir_cond.emplace_back(irCODE::LABEL,
                         "LOOP_" + ctx.loop_label.top() + "_BEGIN");
-
+    //添加phi_move语句，保存phi点
     for (int i = 0; i < (int)ctx_before.symbol_table.size(); i++) 
     {
         for (const auto& symbol_before : ctx_before.symbol_table[i]) 
@@ -524,17 +524,13 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
                             "LOOP_" + ctx.loop_label.top() + "_BEGIN");
     ir_continue.emplace_back(irCODE::LABEL,
                             "LOOP_" + ctx.loop_label.top() + "_END");
-
-    //////////////////////////////////////////////////////////////////////
-
+    //上面模拟运行完之后，再根据信息重新生成一遍
     // COND real
     ctx_cond = ctx_before;
     cond = this->cond.eval_cond_run(ctx_cond, ir_cond);
-
     // JMP real
     ir_jmp.clear();
     ir_jmp.emplace_back(cond.elseop, "LOOP_" + ctx.loop_label.top() + "_END");
-
     // DO (fake) real
     ctx_do_fake = ctx_cond;
     ir_do_fake.clear();
@@ -545,7 +541,6 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     this->stmt.generate_ir(ctx_do_fake, ir_do_fake);
     ctx_do_fake.loop_continue_symbol_snapshot.top().push_back(
         ctx_do_fake.symbol_table);
-
     // DO real
     ctx_do = ctx_cond;
     ir_do.clear();
@@ -616,7 +611,6 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ctx_do.loop_break_symbol_snapshot.pop();
     ctx_do.loop_continue_phi_move.pop();
     ctx_do.loop_break_phi_move.pop();
-
     // CONTINUE real
     ctx_continue = ctx_do;
     ir_continue.emplace_back(irCODE::LABEL,
@@ -637,7 +631,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     }
     ir_continue.emplace_back(irCODE::JMP,
                             "LOOP_" + ctx.loop_label.top() + "_BEGIN");
-    //假读延长生命周期
+    //假读延长生命周期，将在循环之外的变量的生命周期延长，保证在寄存器覆盖时不会在循环时覆盖
     std::unordered_set<std::string> written;
     for (auto& irs : std::vector<IRList*>{&ir_cond, &ir_jmp, &ir_do}) {
         for (auto& i : *irs) {
@@ -653,8 +647,7 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
             false);
         }
     }
-    
-    //连接ir
+    //连接所有生成的ir
     ctx = ctx_cond;
     ctx.id = ctx_continue.id;
     ir.splice(ir.end(), ir_before);
@@ -663,7 +656,6 @@ void WhileStmt::irGEN(Context& ctx, IRList& ir) {
     ir.splice(ir.end(), ir_do);
     ir.splice(ir.end(), ir_continue);
     ir.splice(ir.end(), end);
-
     ctx.loop_var.pop();
     ctx.loop_label.pop();
     ctx.end_scope();
